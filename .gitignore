@@ -1,0 +1,5 @@
+target/
+
+# Local-only: tool settings with absolute paths, and the private wind-down notes of the previous service
+.claude/
+docs/legacy/

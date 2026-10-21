@@ -1,0 +1,9 @@
+# Dogfooding policy for this repository (docs/validation-plan.md, H1).
+# Required evidence: the test suite ran, on exactly the content being finished.
+version = 1
+id = "opshero-self"
+
+[[require]]
+id = "tests"
+check = "evidence.fresh"
+command = ["cargo", "test", "*"]

@@ -1,0 +1,21 @@
+[workspace]
+resolver = "3"
+members = ["crates/opshero-core", "crates/opshero-cli"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.98"
+publish = false # licence not decided yet (docs/adr/0006)
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

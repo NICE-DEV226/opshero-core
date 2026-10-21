@@ -1,0 +1,3 @@
+{"note":"Levels used in the exploratory fuzzy-recall check. Level 1 = same cause and same fix; level 2 = same cause class, different specifics; unlisted ids = level 0. Two blind judges (A and B), 50 pairs.",
+ "judge_A":{"level_1":[22,30,37,42,43],"level_2":[0,1,2,3,6,9,16,18,23,24,26,27,34,38,44,49]},
+ "judge_B":{"level_1":[6,22,30,34,37,42,43,44,49],"level_2":[0,1,2,3,9,16,18,23,24,26,27,38]}}

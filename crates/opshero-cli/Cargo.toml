@@ -1,0 +1,24 @@
+[package]
+name = "opshero-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "opshero command-line interface (adapters around the pure core)"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "opshero"
+path = "src/main.rs"
+
+[dependencies]
+opshero-core = { path = "../opshero-core" }
+serde_json = { version = "1", features = ["preserve_order"] } # keep users' settings.json key order when editing
+shell-words = "1"
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
+proptest = "1"
