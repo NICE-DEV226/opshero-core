@@ -110,3 +110,17 @@ Two automated reviews flagged six points. Each was checked against the code; non
 | The `cd` target may contain parent components | covered by the first row | a path is accepted only if it resolves inside the repository |
 
 Tests: 204 passing. Mutants: 64 killed (two documented equivalents).
+
+## Update 2026-10-21 (second automated security review: the shell analyzer)
+Two more findings on `shellcmd.rs`, one rated high. Instead of patching the single case, a **differential test against bash itself** was written (`crates/opshero-core/tests/shell_differential.rs`): for every input the analyzer calls a simple command, bash runs it with each unknown command intercepted, and the test requires that bash executed at most one command and that its program is the one the analyzer reported. Findings, all real:
+
+| Differential | Example | Fix |
+|---|---|---|
+| ANSI-C quoting: inside `$'...'` a backslash escapes the apostrophe, which a POSIX splitter does not know. The input is balanced for the splitter and is two commands for bash | `a $'\'' ; b \'` | `$'` and `$"` outside quotes are refused |
+| A comment ends at the newline whatever a backslash before it says; the next line is a new command | `- #x\` newline `a` | an unquoted word starting with `#` is refused |
+| A quoted or escaped `NAME=value` is a command name in bash, not an assignment; assignments were recognised after unquoting | `'v=1a=b' xf` | assignments are recognised on the raw text |
+| A "program" that is not a program name | `x->b` (bash runs `x-`), `$x`, `*`, `>`, empty | the program name must match a safe character set |
+
+The environment-variable denylist (second finding) was replaced by an **allowlist** (`CI`, `LANG`, `LC_*`, `TZ`, `RUST_BACKTRACE`, `NODE_ENV`, ...): the set of variables that can redirect a toolchain (`PATH`, `LD_*`, `RUSTFLAGS`, `CARGO_*`, `PYTEST_*`, `NPM_CONFIG_*`, `GIT_*`, `*_ADDOPTS`, ...) has no end. Cost: an application variable such as `MYAPP_ENV=test pytest` is no longer evidence, so an agent is nudged to run it plainly; a policy-level opt-in list is a possible later addition.
+
+Result: 1.5 million random inputs (six seeds), about 67,000 of them classified as simple commands and compared with bash, found no remaining differential. Limits of the harness, stated: programs given with a slash are executed by bash without going through the observation hook and are not checked; zero commands executed (for example a failed redirection) is accepted as safe because no false success can come out of it. Tests: 207 passing. Mutants: 68 killed (two documented equivalents).

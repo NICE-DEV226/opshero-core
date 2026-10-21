@@ -380,10 +380,7 @@ fn hook_understands_env_prefix_and_cd_prefix() {
     let d = new_repo();
     echo_policy(d.path());
     fs::create_dir_all(d.path().join("sub")).unwrap();
-    hook(
-        d.path(),
-        bash_ok(d.path(), "CI=true cd_placeholder_ignored=1 mytests -x"),
-    );
+    hook(d.path(), bash_ok(d.path(), "CI=true TZ=UTC mytests -x"));
     hook(d.path(), bash_ok(d.path(), "cd sub && mytests -x"));
     assert_eq!(record_count(d.path()), 2);
     let texts: Vec<String> = fs::read_dir(d.path().join(".git/opshero/records"))
@@ -393,9 +390,18 @@ fn hook_understands_env_prefix_and_cd_prefix() {
     assert!(
         texts
             .iter()
-            .any(|t| t.contains("\"env_names\":[\"CI\",\"cd_placeholder_ignored\"]"))
+            .any(|t| t.contains("\"env_names\":[\"CI\",\"TZ\"]"))
     );
     assert!(texts.iter().any(|t| t.contains("\"cwd\":\"sub\"")));
+
+    // A variable that is not on the allowlist (it could redirect the toolchain) is not evidence.
+    hook(d.path(), bash_ok(d.path(), "PATH=/tmp/fake mytests -x"));
+    hook(d.path(), bash_ok(d.path(), "MYAPP_ENV=test mytests -x"));
+    assert_eq!(
+        record_count(d.path()),
+        2,
+        "unlisted variables must not produce evidence"
+    );
 }
 
 #[test]

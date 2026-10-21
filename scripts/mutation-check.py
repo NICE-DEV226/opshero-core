@@ -31,6 +31,7 @@ O = "crates/opshero-cli/src/ops.rs"
 EV = "crates/opshero-cli/src/evidence.rs"
 SH = "crates/opshero-core/src/shellcmd.rs"
 SHELL_T = ["cargo", "test", "-p", "opshero-core", "--lib", "shellcmd"]
+SHELL_DIFF = ["cargo", "test", "-p", "opshero-core", "--test", "shell_differential"]
 POL = "crates/opshero-core/src/policy.rs"
 POLICY_T = ["cargo", "test", "-p", "opshero-core", "--lib", "policy"]
 ST = "crates/opshero-cli/src/store.rs"
@@ -94,10 +95,14 @@ MUTANTS = [
     ("A2: a wildcard pattern is executed as written", POL, '(self.command.last().map(String::as_str) != Some("*")).then(|| self.command.clone())', "Some(self.command.clone())", POLICY_T),
     ("A2: run need not match the command pattern", POL, "|| !command_matches(&r.command, run);", ";", POLICY_T),
     ("hardening: a run outside the repository is recorded as inside", O, "let rel = d.strip_prefix(r).ok()?;", "let rel = d.strip_prefix(r).unwrap_or(std::path::Path::new(\"\"));", E2E),
-    ("hardening: LD_* variables allowed", SH, '        || name.starts_with("LD_")\n', "", SHELL_T),
     ("hardening: an exclusion matching everything is accepted", POL, "if e.chars().all(|c| matches!(c, '*' | '.' | '/')) {", "if false {", POLICY_T),
     ("hardening: no warning for a policy from the checked-out content", M, "    if ops::is_inside_repo(root, policy_file) {", "    if false && ops::is_inside_repo(root, policy_file) {", E2E),
     ("hardening: oversized published blob not skipped by size", EV, "        if size > MAX_RECORD_BYTES {", "        if false && size > MAX_RECORD_BYTES {", E2E),
+    ("shell: ANSI-C quoting $'...' accepted", SH, "b'$' if matches!(b.get(i + 1), Some(b'\\'' | b'\"')) => {", "b'$' if false && matches!(b.get(i + 1), Some(b'\\'' | b'\"')) => {", SHELL_DIFF),
+    ("shell: comments not detected", SH, "b'#' if i == 0 || b[i - 1].is_ascii_whitespace() =>", "b'#' if false && (i == 0 || b[i - 1].is_ascii_whitespace()) =>", SHELL_T),
+    ("shell: variables not checked against the allowlist", SH, "if env_names.iter().any(|n| !harmless_variable(n)) {", "if false {", SHELL_T),
+    ("shell: any word accepted as program name", SH, "if words[0].is_empty() || !words[0].chars().all(is_program_char) {", "if false {", SHELL_T),
+    ("shell: assignments recognised after unquoting", SH, "let (env_names, rest) = split_assignments(rest);", 'let (env_names, rest): (Vec<String>, &str) = (vec![], rest);', SHELL_T),
     ("git: no cleanup of newly ignored entries", G, "    if !ignored.is_empty() {\n        if ignored.iter().any", "    if false && !ignored.is_empty() {\n        if ignored.iter().any", GIT),
     ("git: one shared index for all exclusion sets", G, 'format!("index-{}", key.get(..32).unwrap_or("default"))', '"index-shared".to_owned()', GIT),
     ("git: check-ignore without --no-index", G, '"check-ignore", "--no-index", "-z"', '"check-ignore", "-z"', GIT),

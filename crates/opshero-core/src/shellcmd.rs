@@ -42,6 +42,15 @@ fn first_unquoted_operator(s: &str) -> Option<(usize, &'static str)> {
                 b'"' => double = true,
                 b'`' => return Some((i, "command substitution")),
                 b'$' if b.get(i + 1) == Some(&b'(') => return Some((i, "command substitution")),
+                // ANSI-C (`$'...'`) and locale (`$"..."`) quoting follow different rules from
+                // plain quotes (`\'` is an escaped quote inside `$'...'`), so a splitter that
+                // does not know them reads the wrong boundaries. Not supported: refuse.
+                b'$' if matches!(b.get(i + 1), Some(b'\'' | b'"')) => {
+                    return Some((i, "unsupported quoting"));
+                }
+                // A word starting with `#` begins a comment that ends at the NEWLINE, whatever
+                // a backslash before it says: what follows on the next line is a new command.
+                b'#' if i == 0 || b[i - 1].is_ascii_whitespace() => return Some((i, "comment")),
                 b'\n' => return Some((i, "newline")),
                 b';' => return Some((i, ";")),
                 b'(' | b')' => return Some((i, "subshell")),
@@ -76,47 +85,94 @@ fn first_unquoted_operator(s: &str) -> Option<(usize, &'static str)> {
     None
 }
 
-/// Variables that decide *which* program or library runs, or inject options into the test
-/// runner. A run that sets one of them is not evidence that the real tests ran, so it is
-/// not recorded. Ordinary variables (`CI=1`, `RUST_BACKTRACE=1`, `LANG=C`) are fine.
-fn changes_how_programs_run(name: &str) -> bool {
-    const EXACT: &[&str] = &[
-        "PATH",
-        "IFS",
-        "SHELL",
-        "ENV",
-        "BASH_ENV",
-        "PYTHONPATH",
-        "PYTHONHOME",
-        "PYTHONSTARTUP",
-        "NODE_OPTIONS",
-        "NODE_PATH",
-        "RUBYOPT",
-        "RUBYLIB",
-        "PERL5OPT",
-        "PERL5LIB",
-        "RUSTC",
-        "RUSTC_WRAPPER",
-        "RUSTC_WORKSPACE_WRAPPER",
-        "CARGO_BUILD_RUSTC",
-        "CLASSPATH",
-        "JAVA_TOOL_OPTIONS",
-        "GOFLAGS",
+/// Environment variables that do not change *which* program or library runs or what options the
+/// test runner receives. Everything else is refused: a run that sets an unlisted variable is not
+/// recorded as evidence. An allowlist, not a denylist, because the list of variables that can
+/// redirect a toolchain (`PATH`, `LD_*`, `RUSTFLAGS`, `CARGO_*`, `PYTEST_*`, `NPM_CONFIG_*`,
+/// `GIT_*`, `*_ADDOPTS`, ...) has no end. The price is that an application variable such as
+/// `MYAPP_ENV=test pytest` is not evidence either: the agent is nudged to run it plainly.
+fn harmless_variable(name: &str) -> bool {
+    const ALLOWED: &[&str] = &[
+        "CI",
+        "TERM",
+        "TZ",
+        "LANG",
+        "LANGUAGE",
+        "NO_COLOR",
+        "FORCE_COLOR",
+        "CLICOLOR",
+        "CLICOLOR_FORCE",
+        "COLORTERM",
+        "DEBUG",
+        "VERBOSE",
+        "NODE_ENV",
+        "RUST_BACKTRACE",
+        "RUST_LOG",
+        "RUST_TEST_THREADS",
+        "RUST_MIN_STACK",
+        "CARGO_TERM_COLOR",
+        "PYTHONUNBUFFERED",
+        "PYTHONDONTWRITEBYTECODE",
+        "PYTHONHASHSEED",
+        "PYTHONUTF8",
+        "PYTHONIOENCODING",
+        "GOMAXPROCS",
     ];
-    EXACT.contains(&name)
-        || name.starts_with("LD_")
-        || name.starts_with("DYLD_")
-        || name.ends_with("_ADDOPTS")
+    ALLOWED.contains(&name) || name.starts_with("LC_")
 }
 
-fn is_assignment(word: &str) -> Option<&str> {
-    let (name, _) = word.split_once('=')?;
-    let mut chars = name.chars();
-    let first = chars.next()?;
-    (first.is_ascii_alphabetic() || first == '_')
-        .then_some(())
-        .filter(|_| chars.all(|c| c.is_ascii_alphanumeric() || c == '_'))
-        .map(|_| name)
+fn is_program_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '/' | '+' | '-' | ':' | '@' | '%')
+}
+
+/// Peel `NAME=value` words off the front of `s`, working on the raw text. Returns the names
+/// and the remainder. A value may contain quotes and backslashes; it runs to the next
+/// unquoted whitespace.
+fn split_assignments(mut s: &str) -> (Vec<String>, &str) {
+    let mut names = Vec::new();
+    loop {
+        s = s.trim_start();
+        let b = s.as_bytes();
+        let mut i = 0;
+        if !b
+            .first()
+            .is_some_and(|c| c.is_ascii_alphabetic() || *c == b'_')
+        {
+            return (names, s);
+        }
+        while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'_') {
+            i += 1;
+        }
+        if b.get(i) != Some(&b'=') {
+            return (names, s);
+        }
+        let name = &s[..i];
+        i += 1;
+        let (mut single, mut double) = (false, false);
+        while i < b.len() {
+            let c = b[i];
+            if single {
+                single = c != b'\'';
+            } else if double {
+                if c == b'\\' {
+                    i += 1;
+                } else if c == b'"' {
+                    double = false;
+                }
+            } else {
+                match c {
+                    b'\\' => i += 1,
+                    b'\'' => single = true,
+                    b'"' => double = true,
+                    c if c.is_ascii_whitespace() => break,
+                    _ => {}
+                }
+            }
+            i += 1;
+        }
+        names.push(name.to_owned());
+        s = &s[i.min(s.len())..];
+    }
 }
 
 pub fn analyze(command: &str) -> Analysis {
@@ -136,19 +192,23 @@ pub fn analyze(command: &str) -> Analysis {
     if let Some((_, what)) = first_unquoted_operator(rest) {
         return Analysis::Compound(what);
     }
-    let Ok(mut words) = shell_words::split(rest) else {
+    // Leading assignments are recognised on the RAW text: `'A=b'` and `\A=b` are command
+    // names in bash, not assignments, and a splitter that unquotes first cannot tell.
+    let (env_names, rest) = split_assignments(rest);
+    let Ok(words) = shell_words::split(rest) else {
         return Analysis::Compound("unparsable quoting");
     };
-    let mut env_names = Vec::new();
-    while let Some(name) = words.first().and_then(|w| is_assignment(w)) {
-        if changes_how_programs_run(name) {
-            return Analysis::Compound("environment variable that changes how programs run");
-        }
-        env_names.push(name.to_owned());
-        words.remove(0);
-    }
     if words.is_empty() {
         return Analysis::Compound("empty command");
+    }
+    if env_names.iter().any(|n| !harmless_variable(n)) {
+        return Analysis::Compound("environment variable not on the allowlist");
+    }
+    // The program name must look like one. Bash splits `x->b` into the program `x-` and a
+    // redirection, and `$x` or `*` expand to something else: a splitter that keeps them as
+    // one word reports a program that is not the one that runs.
+    if words[0].is_empty() || !words[0].chars().all(is_program_char) {
+        return Analysis::Compound("unusual program name");
     }
     Analysis::Simple {
         env_names,
@@ -259,7 +319,7 @@ mod tests {
     }
 
     #[test]
-    fn variables_that_change_how_programs_run_are_not_evidence() {
+    fn only_allowlisted_variables_may_precede_a_command_that_counts_as_evidence() {
         for bad in [
             "PATH=/tmp/fake pytest",
             "LD_PRELOAD=/tmp/x.so pytest",
@@ -267,10 +327,18 @@ mod tests {
             "DYLD_INSERT_LIBRARIES=/tmp/x pytest",
             "PYTHONPATH=/tmp pytest",
             "PYTEST_ADDOPTS=--co pytest",
+            "PYTEST_PLUGINS=evil pytest",
             "NODE_OPTIONS=--require=/tmp/x npm test",
+            "NPM_CONFIG_REGISTRY=http://x npm test",
             "RUSTC_WRAPPER=/tmp/w cargo test",
+            "RUSTFLAGS=-Cx cargo test",
+            "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER=/tmp/r cargo test",
+            "CARGO_BUILD_RUSTC=/tmp/r cargo test",
+            "GIT_DIR=/tmp git status",
             "BASH_ENV=/tmp/e sh t.sh",
             "CI=1 PATH=/tmp pytest",
+            "FOO=bar make test",
+            "MYAPP_ENV=test pytest",
         ] {
             assert!(
                 matches!(analyze(bad), Analysis::Compound(_)),
@@ -280,13 +348,74 @@ mod tests {
         for ok in [
             "CI=1 pytest",
             "RUST_BACKTRACE=1 cargo test",
-            "FOO=bar make test",
             "LANG=C pytest -q",
+            "LC_ALL=C.UTF-8 pytest",
+            "CI=true NODE_ENV=test npm test",
+            "PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 pytest",
         ] {
             assert!(
                 matches!(analyze(ok), Analysis::Simple { .. }),
                 "{ok} is an ordinary command"
             );
+        }
+        // An assignment with no command stays "empty command", not an allowlist message.
+        assert_eq!(analyze("FOO=1"), Analysis::Compound("empty command"));
+    }
+
+    #[test]
+    fn comments_quoted_assignments_and_empty_names_are_not_simple_commands() {
+        // A comment ends at the newline even when it ends with a backslash: `a` is a second command.
+        for bad in [
+            "- #x\\\na",
+            "pytest # note",
+            "# only a comment",
+            "a #b",
+            "a\t#b",
+        ] {
+            assert!(
+                matches!(analyze(bad), Analysis::Compound(_)),
+                "{bad:?} must be refused"
+            );
+        }
+        // Quoted or escaped `NAME=value` is a command NAME in bash, not an assignment.
+        for bad in [
+            "'v=1a=b' xf",
+            "\\xv=1? bxx",
+            "\"A=b\" pytest",
+            "v=1 \"\"",
+            "''",
+        ] {
+            assert!(
+                matches!(analyze(bad), Analysis::Compound(_)),
+                "{bad:?} must be refused"
+            );
+        }
+        // A program name must look like one: bash splits `x->b` into `x-` and a redirection,
+        // and `$x`, `*`, `>` are not program names at all.
+        for bad in [
+            "x->b", "$x", "*", ">", "a>b", "$'a'", "$\"a\"", "~", "{a,b}",
+        ] {
+            assert!(
+                matches!(analyze(bad), Analysis::Compound(_)),
+                "{bad:?} must be refused"
+            );
+        }
+        // `#` inside a word, or as `$#`, is not a comment.
+        for ok in ["pytest tests/a#b", "echo a#b", "pytest -k 'not #1'"] {
+            assert!(
+                matches!(analyze(ok), Analysis::Simple { .. }),
+                "{ok:?} is an ordinary command"
+            );
+        }
+        // Real assignments keep working, including quoted values.
+        match analyze("CI=1 TZ='America/New York' pytest -q") {
+            Analysis::Simple {
+                env_names, argv, ..
+            } => {
+                assert_eq!(env_names, ["CI", "TZ"]);
+                assert_eq!(argv, ["pytest", "-q"]);
+            }
+            other => panic!("{other:?}"),
         }
     }
 }
