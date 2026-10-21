@@ -127,3 +127,10 @@ Result: 1.5 million random inputs (six seeds), about 67,000 of them classified a
 
 ## Update 2026-10-21 (first CI attempt)
 The first two pushes started the workflow on GitHub; all three jobs failed after 3 to 5 seconds with no step run and no runner assigned. The check annotation gives the cause: *the job was not started because recent account payments have failed or the spending limit needs to be increased* (private repository, Actions minutes). It is an account setting, not a code failure, so the workflow stays unverified on a real runner. `scripts/ci-local.sh` runs the same steps locally (the quick form, without the mutation check, passes in about 45 seconds).
+
+## Update 2026-10-21 (third automated review: word separators)
+Finding (high): bash separates words on space and tab only; the analyzer also treated form feed, carriage return, vertical tab and Unicode spaces as separators. `CI=1<FF>a` is one assignment to bash (nothing runs, exit status 0) and "run a" to the analyzer: a recorded run that never happened. Reproduced by the differential test before fixing. Fix: any control character (except tab and newline) and any Unicode space other than space and tab is refused, and the raw scans split on space and tab only.
+
+The differential test also exposed an error in an earlier assumption of mine: "bash ran nothing" is only safe when the shell **reported a failure**. An assignment alone runs nothing and exits 0. The test now requires a non-zero exit status in that case, and its alphabet includes the new characters and allowlisted assignments (without them the fuzzer could no longer reach assignments at all). Bash builtins and keywords (`fc`, `cd`, `if`, ...) are skipped by the harness, as it cannot observe them; the list comes from `compgen -b; compgen -k`, not from a guess.
+
+1.5 million further random inputs (six seeds) found no differential. Tests: 208 passing. Mutants: 70 killed (two documented equivalents).

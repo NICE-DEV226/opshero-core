@@ -5,7 +5,8 @@
 //! (a hidden second command, a different program). For every input the analyzer calls
 //! `Simple`, this test runs the input in a real bash, with every unknown command
 //! intercepted by `command_not_found_handle`, and requires that bash executed at most one
-//! command and that, if it ran one, its program name is the one the analyzer reported.
+//! command, that if it ran one its program name is the one the analyzer reported, and that if
+//! it ran none the shell reported a failure (no false success).
 //!
 //! Safety of the harness: the alphabet contains no parentheses or braces (so no function can
 //! be defined or recursed), the only words are `a b c f` (none exists on PATH, so each call
@@ -42,6 +43,27 @@ fn locate(name: &str) -> Option<std::path::PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// Names bash handles itself (builtins and keywords): they never reach `command_not_found_handle`,
+/// so this harness cannot observe them. Asked from bash, not guessed.
+fn bash_builtins() -> &'static std::collections::HashSet<String> {
+    static SET: std::sync::OnceLock<std::collections::HashSet<String>> = std::sync::OnceLock::new();
+    SET.get_or_init(|| {
+        let Some(bash) = locate("bash") else {
+            return Default::default();
+        };
+        let out = Command::new(bash)
+            .args(["--noprofile", "--norc", "-c", "compgen -b; compgen -k"])
+            .output();
+        out.map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+    })
+}
+
 fn bash_available() -> bool {
     Command::new("bash")
         .arg("--version")
@@ -52,7 +74,7 @@ fn bash_available() -> bool {
 
 /// What bash executed: each unknown command is appended to a log file (not stdout, which the
 /// input itself may redirect) as `CALL\0prog\0args...END\0`.
-fn run_in_bash(input: &str) -> Option<Vec<Vec<String>>> {
+fn run_in_bash(input: &str) -> Option<(Vec<Vec<String>>, i32)> {
     // One private pair of directories per call: an empty working directory (so globs expand
     // to nothing) and a log kept outside it. Tests run in parallel and must not share state.
     static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -66,7 +88,7 @@ fn run_in_bash(input: &str) -> Option<Vec<Vec<String>>> {
         log.display()
     );
     let (timeout, bash) = (locate("timeout")?, locate("bash")?);
-    let _ = Command::new(timeout)
+    let status = Command::new(timeout)
         .arg("3")
         .arg(bash)
         .args(["--noprofile", "--norc", "-c", &script])
@@ -78,6 +100,10 @@ fn run_in_bash(input: &str) -> Option<Vec<Vec<String>>> {
         .stderr(Stdio::null())
         .status()
         .ok()?;
+    let exit = status.code()?;
+    if exit == 124 {
+        return None; // timed out: the harness, not the input, failed
+    }
     let text = std::fs::read(&log)
         .map(|b| String::from_utf8_lossy(&b).into_owned())
         .unwrap_or_default();
@@ -93,7 +119,7 @@ fn run_in_bash(input: &str) -> Option<Vec<Vec<String>>> {
         }
         calls.push(parts);
     }
-    Some(calls)
+    Some((calls, exit))
 }
 
 fn check(input: &str) -> Result<(), String> {
@@ -105,10 +131,12 @@ fn check(input: &str) -> Result<(), String> {
     if argv.first().is_some_and(|p| p.contains('/')) {
         return Ok(());
     }
-    let calls = run_in_bash(input).ok_or_else(|| format!("harness failed on {input:?}"))?;
-    // More than one command, or a different program, is a forgery risk. Zero commands is
-    // safe: a failed redirection (`cmd < missing`) stops bash from running anything, so no
-    // false success can come out of it.
+    // Same for builtins and keywords (`fc`, `cd`, `exit`, `if`, ...): handled inside bash.
+    if argv.first().is_some_and(|p| bash_builtins().contains(p)) {
+        return Ok(());
+    }
+    let (calls, exit) = run_in_bash(input).ok_or_else(|| format!("harness failed on {input:?}"))?;
+    // More than one command, or a different program, is a forgery risk.
     if calls.len() > 1 {
         return Err(format!(
             "analyzer said ONE simple command {argv:?}, but bash executed {} commands: {calls:?}\n  input: {input:?}",
@@ -116,7 +144,15 @@ fn check(input: &str) -> Result<(), String> {
         ));
     }
     if calls.is_empty() {
-        return Ok(());
+        // Nothing ran. That is only safe if the shell reported a failure: an assignment alone
+        // (`v=1<FF>a`) runs nothing and exits 0, which would record a run that never happened.
+        return if exit != 0 {
+            Ok(())
+        } else {
+            Err(format!(
+                "analyzer said ONE simple command {argv:?}, but bash ran nothing and exited 0 (a false success)\n  input: {input:?}"
+            ))
+        };
     }
     if calls[0].first() != argv.first() {
         return Err(format!(
@@ -166,6 +202,21 @@ const TRAPS: &[&str] = &[
     "\\xv=1? bxx",
     "'A=b' a",
     "a #b\nc",
+    // Bash separates words only on space and tab; these are ordinary characters in a word.
+    "CI=1\x0ca",
+    "CI=1\ra",
+    "CI=1\u{a0}a",
+    "a\x0cb",
+    "a\rb",
+    "a\x0bb",
+    "a\u{a0}b",
+    "a\u{2003}b",
+    "CI=1\u{3000}a",
+    "a\x0c#b",
+    "a \x0c; b",
+    "CI=1\x0bTZ=UTC\x0ca",
+    "TZ=UTC\ta",
+    "CI=1 \x0c a",
     "a '#' b",
 ];
 

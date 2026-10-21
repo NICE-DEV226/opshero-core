@@ -50,7 +50,7 @@ fn first_unquoted_operator(s: &str) -> Option<(usize, &'static str)> {
                 }
                 // A word starting with `#` begins a comment that ends at the NEWLINE, whatever
                 // a backslash before it says: what follows on the next line is a new command.
-                b'#' if i == 0 || b[i - 1].is_ascii_whitespace() => return Some((i, "comment")),
+                b'#' if i == 0 || matches!(b[i - 1], b' ' | b'\t') => return Some((i, "comment")),
                 b'\n' => return Some((i, "newline")),
                 b';' => return Some((i, ";")),
                 b'(' | b')' => return Some((i, "subshell")),
@@ -131,7 +131,7 @@ fn is_program_char(c: char) -> bool {
 fn split_assignments(mut s: &str) -> (Vec<String>, &str) {
     let mut names = Vec::new();
     loop {
-        s = s.trim_start();
+        s = s.trim_start_matches([' ', '\t']);
         let b = s.as_bytes();
         let mut i = 0;
         if !b
@@ -164,7 +164,7 @@ fn split_assignments(mut s: &str) -> (Vec<String>, &str) {
                     b'\\' => i += 1,
                     b'\'' => single = true,
                     b'"' => double = true,
-                    c if c.is_ascii_whitespace() => break,
+                    b' ' | b'\t' => break,
                     _ => {}
                 }
             }
@@ -176,6 +176,17 @@ fn split_assignments(mut s: &str) -> (Vec<String>, &str) {
 }
 
 pub fn analyze(command: &str) -> Analysis {
+    // Bash separates words on space and tab only. Form feed, carriage return, vertical tab, no-break
+    // space and the other Unicode spaces are ordinary characters inside a word for bash but
+    // separators for a Unicode-aware splitter: `CI=1<FF>a` is one assignment (nothing runs, exit 0)
+    // to bash and "run a" to a splitter. Refuse them, and every other control character, before
+    // anything is parsed. (Newline is handled as an operator when unquoted.)
+    if command.chars().any(|c| {
+        (c.is_control() && c != '\t' && c != '\n')
+            || (c.is_whitespace() && !matches!(c, ' ' | '\t' | '\n'))
+    }) {
+        return Analysis::Compound("unusual whitespace or control character");
+    }
     let command = command.trim();
     let (cd, rest) = match first_unquoted_operator(command) {
         Some((pos, "&&")) if command.starts_with("cd ") => {
@@ -416,6 +427,43 @@ mod tests {
                 assert_eq!(argv, ["pytest", "-q"]);
             }
             other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn only_space_and_tab_separate_words_and_other_control_or_space_characters_are_refused() {
+        for bad in [
+            "CI=1\x0ca",
+            "CI=1\ra",
+            "CI=1\x0bTZ=UTC a",
+            "a\x0cb",
+            "a\rb",
+            "a\x0bb",
+            "a\u{a0}b",
+            "a\u{2003}b",
+            "pytest\u{3000}-q",
+            "pytest\u{a0}",
+            "\u{a0}pytest",
+            "pytest \x00",
+            "pytest \x1b[0m",
+            "pytest\x7f",
+        ] {
+            assert!(
+                matches!(analyze(bad), Analysis::Compound(_)),
+                "{bad:?} must be refused"
+            );
+        }
+        for ok in [
+            "pytest -q",
+            "pytest\t-q",
+            "CI=1\tpytest",
+            "pytest -k 'a b'",
+            "echo 'two\nlines'",
+        ] {
+            assert!(
+                matches!(analyze(ok), Analysis::Simple { .. }),
+                "{ok:?} is an ordinary command"
+            );
         }
     }
 }
