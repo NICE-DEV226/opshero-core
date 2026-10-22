@@ -106,3 +106,10 @@ jobs:
         run: |
           gh release create "${GITHUB_REF_NAME}" dist/* --prerelease --title "${GITHUB_REF_NAME}" --notes \
           "Pre-alpha. What works and what does not: docs/status.md. Verify a download with \`sha256sum -c SHA256SUMS\` and \`gh attestation verify <archive> --repo ${GITHUB_REPOSITORY}\`. Install: scripts/install.sh."
+
+  verify:
+    # The published release, installed the way a user does it, on every supported system.
+    needs: publish
+    uses: ./.github/workflows/verify-release.yml
+    with:
+      version: ${{ github.ref_name }}

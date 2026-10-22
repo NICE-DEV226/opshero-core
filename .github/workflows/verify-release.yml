@@ -1,0 +1,69 @@
+# Installs a published release the way a user does, on each supported system, and uses it on a real
+# repository. Run by hand for any version, and automatically after every release by release.yml.
+name: verify-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release to verify, with or without the leading v
+        required: true
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      # Only the installers come from the repository; the binary comes from the release.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Normalize the version (a tag name starts with v)
+        shell: bash
+        run: echo "VERSION=${VERSION#v}" >> "$GITHUB_ENV"
+      - name: Install (Linux and macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          OPSHERO_VERSION="$VERSION" PREFIX="$RUNNER_TEMP/opshero" sh scripts/install.sh
+          echo "$RUNNER_TEMP/opshero/bin" >> "$GITHUB_PATH"
+      - name: Install (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:OPSHERO_VERSION = $env:VERSION
+          $env:PREFIX = Join-Path $env:RUNNER_TEMP 'opshero'
+          .\scripts\install.ps1
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Add-Content $env:GITHUB_PATH (Join-Path $env:PREFIX 'bin')
+      - name: Use it on a real repository
+        shell: bash
+        run: |
+          set -u
+          opshero --version | grep -F "$VERSION"
+          expect() { want="$1"; shift; "$@" >/dev/null 2>&1; got=$?; [ "$got" -eq "$want" ] || { echo "expected exit $want, got $got: $*"; exit 1; }; echo "ok  exit $got: $*"; }
+          d="$(mktemp -d)"; cd "$d"
+          git init -q; git config user.email t@example.com; git config user.name t
+          echo a > a; mkdir .opshero
+          printf 'version = 1\nid = "fx"\n[[require]]\nid = "t"\ncheck = "evidence.fresh"\ncommand = ["git", "--version"]\n' > .opshero/policy.toml
+          git add -A; git commit -qm init
+          opshero doctor
+          expect 11 opshero verify             # nothing recorded yet: UNKNOWN
+          expect 0 opshero run -- git --version
+          expect 0 opshero verify              # recorded on this tree: PASS
+          echo more >> a
+          expect 10 opshero verify             # the tree changed: the evidence is stale
+          expect 0 opshero run -- git --version
+          expect 0 opshero verify
