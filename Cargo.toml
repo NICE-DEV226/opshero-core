@@ -6,7 +6,9 @@ members = ["crates/opshero-core", "crates/opshero-cli"]
 version = "0.0.1"
 edition = "2024"
 rust-version = "1.98"
-publish = false # licence not decided yet (docs/adr/0006)
+license = "Apache-2.0"
+repository = "https://github.com/NICE-DEV226/opshero-core"
+publish = false # not published to crates.io yet: the crate names must be checked first
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

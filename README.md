@@ -76,4 +76,4 @@ The pain (verifying agent output) is the best-evidenced one we found, but much o
 
 ## License
 
-Not yet decided. Proposal: Apache-2.0 for the core and the attestation format, with any hosted layer under a source-available license ([ADR-0006](docs/adr/0006-licensing-proposal.md)). No license file is added until that decision is reviewed.
+The core, the CLI and the evidence and attestation formats are under the [Apache License 2.0](LICENSE) (includes a patent grant). Any future hosted layer would be licensed separately; that decision is still open ([ADR-0006](docs/adr/0006-licensing-proposal.md)).
