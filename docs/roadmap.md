@@ -27,6 +27,8 @@ Exit criterion: KI-1 closed (done), mutation fuzzing clean (done), one formal mo
 
 ## M2: Performance and robustness
 
+Platform coverage (2026-10-22): the suite passes in CI on Linux and macOS (required) and Windows (informational).
+
 | Item | State |
 |---|---|
 | Persistent private git index: `run` 70 to 26 ms (3k files), 109 ms (30k files); equality with the from-scratch tree checked by property test | done |

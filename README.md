@@ -2,7 +2,7 @@
 
 > Deterministic, replayable evidence that the checks you rely on **actually ran on the exact content you are about to merge**.
 
-**Status: pre-alpha, Linux only, not yet released.** Implemented and tested: evidence records bound to a git tree, a deterministic policy verdict (PASS / FAIL / UNKNOWN), a Claude Code adapter (hooks, optional Stop gate), flaky-command handling (`repeat`), publishing evidence to a git ref and fetching it in CI (`opshero verify --ci`), and CI-executed evidence at assurance A2 (`opshero ci run`). **Not built:** signed attestations (assurance A3), Codex and Cursor adapters, a packaged CI action, release binaries, macOS and Windows support. Exact state, measurements and known limits: [docs/status.md](docs/status.md). **Demand for this tool is unproven.**
+**Status: pre-alpha, not yet released.** The full test suite passes in CI on Linux and macOS, and on Windows with Git for Windows (Windows is not a supported platform yet: it has not been exercised with a real agent). Implemented and tested: evidence records bound to a git tree, a deterministic policy verdict (PASS / FAIL / UNKNOWN), a Claude Code adapter (hooks, optional Stop gate), flaky-command handling (`repeat`), publishing evidence to a git ref and fetching it in CI (`opshero verify --ci`), and CI-executed evidence at assurance A2 (`opshero ci run`). **Not built:** signed attestations (assurance A3), Codex and Cursor adapters, a packaged CI action, release binaries and an installer. Exact state, measurements and known limits: [docs/status.md](docs/status.md). **Demand for this tool is unproven.**
 
 ### Try it
 ```
