@@ -56,6 +56,30 @@ jobs:
         with:
           command: check
 
+  fuzz:
+    # Coverage-guided fuzzing (libFuzzer, needs nightly) of the parsers that read untrusted input.
+    # Each target checks properties, not just "does not crash". 60 s per target on every push is a
+    # smoke run; a longer campaign belongs in a scheduled job.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install nightly --profile minimal
+      - run: cargo install cargo-fuzz --locked
+      - name: Fuzz each target for 60 seconds
+        run: |
+          for target in policy record canon shellcmd; do
+            echo "::group::fuzz $target"
+            cargo +nightly fuzz run "$target" -- -max_total_time=60 -rss_limit_mb=2048
+            echo "::endgroup::"
+          done
+      - name: Keep the crashing input, if any
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts
+          if-no-files-found: ignore
+
   formal:
     runs-on: ubuntu-24.04
     steps:

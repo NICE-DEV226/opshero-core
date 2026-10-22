@@ -1,0 +1,15 @@
+version = 1
+id = "p"
+[subject]
+exclude = ["*.log", "dist"]
+
+[[require]]
+id = "tests"
+check = "evidence.fresh"
+command = ["pytest", "*"]
+min_assurance = "A2"
+severity = "block"
+repeat = { alpha = "5%", flake_rate = "5%" }
+post_run_changes = "deny"
+paths = ["*.py"]
+run = ["pytest", "-q"]

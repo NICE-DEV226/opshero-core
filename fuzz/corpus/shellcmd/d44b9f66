@@ -1,0 +1,1 @@
+cd sub && FOO=1 pytest -q tests/

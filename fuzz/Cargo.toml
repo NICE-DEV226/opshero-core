@@ -1,0 +1,44 @@
+[package]
+name = "opshero-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+opshero-core = { path = "../crates/opshero-core" }
+serde_json = "1"
+
+# Detach from the main workspace: this crate needs the nightly toolchain and is built only by cargo-fuzz.
+[workspace]
+
+[[bin]]
+name = "policy"
+path = "fuzz_targets/policy.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "record"
+path = "fuzz_targets/record.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "canon"
+path = "fuzz_targets/canon.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "shellcmd"
+path = "fuzz_targets/shellcmd.rs"
+test = false
+doc = false
+bench = false

@@ -1,0 +1,6 @@
+version = 1
+id = "x"
+[[require]]
+id = "a"
+check = "evidence.fresh"
+command = ["a"]
