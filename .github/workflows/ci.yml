@@ -43,6 +43,9 @@ jobs:
       # Packaging and installer, against a fake local release (not for Windows: no installer there).
       - run: sh scripts/test-install.sh
         if: runner.os != 'Windows'
+      # docs/cli.md is generated from the program's own --help: it must be current.
+      - run: python3 scripts/gen-cli-docs.py --check
+        if: runner.os == 'Linux'
 
   deny:
     runs-on: ubuntu-24.04
@@ -64,5 +67,5 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Injects 85 known defects; every one must be caught by a failing test.
+      # Injects 87 known defects; every one must be caught by a failing test.
       - run: python3 scripts/mutation-check.py

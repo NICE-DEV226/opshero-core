@@ -12,6 +12,8 @@ echo "== job: test"
 cargo fmt --all --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
+sh scripts/test-install.sh
+python3 scripts/gen-cli-docs.py --check
 
 echo "== job: formal"
 scripts/check-formal.sh

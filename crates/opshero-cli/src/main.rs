@@ -126,7 +126,7 @@ enum Cmd {
 #[derive(Subcommand)]
 enum CiCmd {
     /// Execute the commands the policy requires, record them as assurance A2, and give the verdict.
-    /// Use the policy of the target branch (--policy), not the one in the pull request.
+    /// Use the policy of the target branch (--policy-ref), not the one in the pull request.
     Run {
         /// Policy file to enforce (relative paths are resolved from the repository root)
         #[arg(long)]

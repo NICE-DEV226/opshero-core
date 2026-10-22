@@ -34,6 +34,7 @@ SHELL_T = ["cargo", "test", "-p", "opshero-core", "--lib", "shellcmd"]
 SHELL_DIFF = ["cargo", "test", "-p", "opshero-core", "--test", "shell_differential"]
 POL = "crates/opshero-core/src/policy.rs"
 INSTALL_T = ["sh", "scripts/test-install.sh"]
+CLIDOC = ["python3", "scripts/gen-cli-docs.py", "--check"]
 POLICY_T = ["cargo", "test", "-p", "opshero-core", "--lib", "policy"]
 ST = "crates/opshero-cli/src/store.rs"
 OPS = ["cargo", "test", "-p", "opshero-cli", "--bin", "opshero", "ops::"]
@@ -119,6 +120,8 @@ MUTANTS = [
     ("install: an unsupported platform is not refused", "scripts/install.sh", '  *) die "no prebuilt binary for $os/$arch.', '  *) target=x86_64-unknown-linux-musl; true || die "no prebuilt binary for $os/$arch.', INSTALL_T),
     ("install: no fallback to the releases list (pre-releases not found)", "scripts/install.sh", '    fetch "$api/releases" "$tmp_v" 2>/dev/null ||', '    false ||', INSTALL_T),
     ("install: the OLDEST tag is chosen from the list", "scripts/install.sh", "| head -n 1 | sed 's/.*\"\\([^\"]*\\)\"$/\\1/; s/^v//')\"", "| tail -n 1 | sed 's/.*\"\\([^\"]*\\)\"$/\\1/; s/^v//')\"", INSTALL_T),
+    ("cli docs: a help text changes without regenerating docs/cli.md", M, "    /// Delete old evidence, keeping the newest records and everything bound to the current content", "    /// Remove old evidence, keeping the newest records and everything bound to the current content", CLIDOC),
+    ("cli docs: the generator forgets nested subcommands", "scripts/gen-cli-docs.py", "    for name in subcommands(text):\n        walk(", "    for name in []:\n        walk(", CLIDOC),
     ("package: files owned by a real user id", "scripts/package_release.py", "info.uid = info.gid = 0", "info.uid = info.gid = 1000", INSTALL_T),
     ("package: the binary is not executable", "scripts/package_release.py", "(f\"{top}/opshero\", binary, 0o755)", "(f\"{top}/opshero\", binary, 0o644)", INSTALL_T),
     ("git: no cleanup of newly ignored entries", G, "    if !ignored.is_empty() {\n        if ignored.iter().any", "    if false && !ignored.is_empty() {\n        if ignored.iter().any", GIT),

@@ -182,3 +182,6 @@ Read, tested and applied by hand rather than merged, because two of them touch w
 - **`actions/checkout` 4.2.2 to 7.0.1 (PR #3):** the release notes of 5, 6 and 7 were read (Node 24, credentials stored in a separate file, a block on dangerous `pull_request_target` checkouts); none affects how the workflows use it. Applied to both workflows, pinned to the commit.
 - **`cargo-deny-action` (PR #2):** already pinned to that very commit on main (I had first pinned an annotated tag object instead of the commit).
 Tests: 221 passing. Mutants: 85 killed.
+
+## Update 2026-10-22 (generated CLI reference)
+`docs/cli.md` is produced by running the binary (`scripts/gen-cli-docs.py`) and walking every subcommand's `--help`; CI (Linux) runs it with `--check` and fails if the committed page differs. It already paid for itself once: it exposed that the help of `ci run` still told people to use `--policy`, after `--policy-ref` had replaced it as the recommendation. Two injected defects (a help text changed without regenerating the page, a generator that forgets nested subcommands) are detected. Mutants: 87 killed.

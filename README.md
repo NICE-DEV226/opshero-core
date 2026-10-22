@@ -70,6 +70,7 @@ Daily use is silent: hooks record what ran. A developer or agent runs `opshero v
 | [docs/rfc/0004-…](docs/rfc/0004-policy-language.md) | Policy language (draft, open decisions) |
 | [docs/adr/](docs/adr/README.md) | Architecture decision records |
 | [docs/engineering-standards.md](docs/engineering-standards.md) | The quality bar: testing, fuzzing, performance, supply chain |
+| [docs/cli.md](docs/cli.md) | Command-line reference, generated from the program's own `--help` (CI fails if it drifts) |
 | [docs/validation-plan.md](docs/validation-plan.md) | Hypotheses and pre-committed kill criteria |
 | [docs/research/](docs/research/README.md) | Raw research reports and the pre-registered commons experiment |
 
