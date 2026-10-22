@@ -201,6 +201,44 @@ pub(crate) mod tests {
         assert_eq!(parse_verified(&raw).unwrap(), r);
     }
 
+    /// Golden values, computed with an independent implementation (Python's `json` with sorted keys
+    /// and compact separators, and `hashlib`). If this test fails, the id of EVERY stored record
+    /// changes: stored evidence stops verifying. That is a breaking change of the evidence format
+    /// (RFC-0002), not a test to update casually. It also guards dependency upgrades (`sha2`,
+    /// `serde_json`) against silent changes.
+    #[test]
+    fn golden_ids_and_canonical_forms_never_change() {
+        use serde_json::json;
+        // SHA-256 of the canonical text of tiny documents ("{}" is the well-known vector).
+        for (doc, id) in [
+            (
+                json!({}),
+                "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            ),
+            (
+                json!("abc"),
+                "6cc43f858fbb763301637b5af970e2a46b46f461f27e5a0f41e009c59b827b25",
+            ),
+            (
+                json!({"b": [1, 2, {"z": null, "a": "é"}], "a": "x"}),
+                "41c93de4e76b692a1e3ac6282c4471e7fb5ca816b4bdfaf0fc9cd1165af880a6",
+            ),
+        ] {
+            assert_eq!(id_of(&doc).unwrap(), id, "{doc}");
+        }
+        // A whole record: its canonical form and its id.
+        let body = sample_body("aaaa", 0, None);
+        let value = serde_json::to_value(&body).unwrap();
+        assert_eq!(
+            crate::canon::canonicalize(&value).unwrap(),
+            r#"{"command":{"argv":["pytest","-q"],"cwd":"."},"execution":{"duration_ms":10,"exit_code":0,"signal":null,"started_at":"2026-01-01T00:00:00Z"},"observation":{"method":"none"},"prev":null,"record_version":1,"recorder":{"assurance":"A1","name":"opshero","version":"0.0.1"},"subject":{"dirty":false,"head_commit":"c0ffee","tree_after":"aaaa","worktree_tree":"aaaa"}}"#
+        );
+        assert_eq!(
+            new_record(body).unwrap().id,
+            "1b0d6c8442d7dc050617296adc688d748bd2b61f6cc12c7b2b858cf9eab88392"
+        );
+    }
+
     #[test]
     fn editing_any_field_breaks_the_id() {
         let r = new_record(sample_body("aaaa", 0, None)).unwrap();
