@@ -2444,3 +2444,91 @@ fn a_full_ref_name_or_a_full_commit_id_is_accepted() {
         assert!(out(&v).contains("sh t.sh"), "{good}: {}", out(&v));
     }
 }
+
+#[test]
+fn doctor_is_clean_in_a_working_repository() {
+    let d = new_repo();
+    write_policy(d.path(), "");
+    let o = opshero(d.path(), &["doctor"]);
+    assert_eq!(code(&o), 0, "{}", out(&o));
+    let text = out(&o);
+    assert!(text.contains("policy `t` with 1 requirement"), "{text}");
+    assert!(text.contains("measured the working tree"), "{text}");
+    assert!(text.contains("evidence store: 0 record(s)"), "{text}");
+    assert!(!text.contains("FAIL"), "{text}");
+}
+
+#[test]
+fn doctor_fails_on_an_invalid_policy_and_says_why() {
+    let d = new_repo();
+    fs::create_dir_all(d.path().join(".opshero")).unwrap();
+    fs::write(d.path().join(".opshero/policy.toml"), "garbage = [\n").unwrap();
+    let o = opshero(d.path(), &["doctor"]);
+    assert_eq!(code(&o), 1);
+    assert!(out(&o).contains("FAIL  invalid policy"), "{}", out(&o));
+}
+
+#[test]
+fn doctor_warns_outside_a_repository_but_does_not_fail() {
+    let d = TempDir::new().unwrap();
+    let o = opshero(d.path(), &["doctor"]);
+    assert_eq!(code(&o), 0, "{}", out(&o));
+    assert!(out(&o).contains("not inside a git repository"));
+}
+
+#[test]
+fn doctor_reports_installed_hooks_and_counts_recorded_runs() {
+    let d = new_repo();
+    write_policy(d.path(), "");
+    let run = opshero(d.path(), &["run", "--", "sh", "-c", "true"]);
+    assert_eq!(code(&run), 0);
+    assert_eq!(code(&opshero(d.path(), &["hook", "install", "--yes"])), 0);
+    let o = opshero(d.path(), &["doctor"]);
+    let text = out(&o);
+    assert!(text.contains("evidence store: 1 record(s)"), "{text}");
+    assert!(
+        text.contains("Claude Code hooks: installed (local)"),
+        "{text}"
+    );
+}
+
+#[test]
+fn doctor_fails_when_git_is_missing() {
+    let d = new_repo();
+    let o = Command::new(env!("CARGO_BIN_EXE_opshero"))
+        .current_dir(d.path())
+        .env("PATH", "")
+        .arg("doctor")
+        .output()
+        .unwrap();
+    assert_eq!(code(&o), 1);
+    assert!(out(&o).contains("git was not found"), "{}", out(&o));
+}
+
+#[test]
+fn completions_cover_every_shell_and_mention_the_subcommands() {
+    let d = TempDir::new().unwrap();
+    for shell in ["bash", "zsh", "fish", "powershell", "elvish"] {
+        let o = opshero(d.path(), &["completions", shell]);
+        assert_eq!(code(&o), 0, "{shell}");
+        let text = out(&o);
+        assert!(
+            text.contains("verify") && text.contains("doctor"),
+            "{shell}"
+        );
+    }
+    assert_eq!(code(&opshero(d.path(), &["completions", "nushell"])), 2);
+}
+
+#[test]
+fn the_manual_page_is_valid_roff_naming_the_program() {
+    let d = TempDir::new().unwrap();
+    let o = opshero(d.path(), &["man"]);
+    assert_eq!(code(&o), 0);
+    let text = out(&o);
+    assert!(text.contains(".TH opshero 1"), "{text}");
+    assert!(
+        text.contains(".SH SYNOPSIS") && text.contains("doctor"),
+        "{text}"
+    );
+}

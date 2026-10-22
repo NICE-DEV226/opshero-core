@@ -1,0 +1,94 @@
+name: opshero gate
+description: "Fail a pull request unless the required checks ran, and passed, on the exact content being merged."
+inputs:
+  mode:
+    description: "run (default): this job executes the commands the policy requires and records them as assurance A2, so the evidence does not depend on the author. verify: fetch the evidence the author published with `opshero evidence push` and check it (assurance A1)."
+    default: run
+  policy:
+    description: "Policy file to enforce. Prefer policy-ref: a file in the pull request is controlled by its author."
+    default: ""
+  policy-ref:
+    description: "Git ref to read the policy from. auto (default) uses the target branch of a pull request (origin/<base branch>) and the checked-out file otherwise. Empty means the checked-out file."
+    default: auto
+  version:
+    description: "opshero release to install, without the leading v."
+    default: "0.0.1"
+  opshero-path:
+    description: "Use this opshero binary instead of downloading a release (for testing a build)."
+    default: ""
+  working-directory:
+    description: "Directory of the git repository to check."
+    default: "."
+outputs:
+  verdict:
+    description: "PASS, FAIL, UNKNOWN or ERROR."
+    value: ${{ steps.gate.outputs.verdict }}
+runs:
+  using: composite
+  steps:
+    - name: Install opshero
+      shell: bash
+      env:
+        OPSHERO_BIN: ${{ inputs.opshero-path }}
+        OPSHERO_VERSION: ${{ inputs.version }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -eu
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          echo "::error::the opshero action supports Linux and macOS runners for now"
+          exit 2
+        fi
+        prefix="$RUNNER_TEMP/opshero"
+        if [ -n "$OPSHERO_BIN" ]; then
+          mkdir -p "$prefix/bin"
+          ln -sf "$(cd "$(dirname "$OPSHERO_BIN")" && pwd)/$(basename "$OPSHERO_BIN")" "$prefix/bin/opshero"
+        else
+          PREFIX="$prefix" sh "$ACTION_PATH/scripts/install.sh"
+        fi
+        echo "$prefix/bin" >> "$GITHUB_PATH"
+    - name: Check the evidence
+      id: gate
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        POLICY: ${{ inputs.policy }}
+        POLICY_REF: ${{ inputs.policy-ref }}
+        WORKDIR: ${{ inputs.working-directory }}
+      run: |
+        cd "$WORKDIR"
+        case "$MODE" in
+          run) cmd=(opshero ci run) ;;
+          verify) cmd=(opshero verify --ci) ;;
+          *) echo "::error::mode must be run or verify, not $MODE"; echo "verdict=ERROR" >> "$GITHUB_OUTPUT"; exit 2 ;;
+        esac
+        args=()
+        if [ -n "$POLICY" ]; then
+          args+=(--policy "$POLICY")
+        else
+          ref="$POLICY_REF"
+          if [ "$ref" = auto ]; then
+            ref=""
+            [ -n "${GITHUB_BASE_REF:-}" ] && ref="origin/$GITHUB_BASE_REF"
+          fi
+          [ -n "$ref" ] && args+=(--policy-ref "$ref")
+        fi
+        out="$RUNNER_TEMP/opshero-output.txt"
+        set +e
+        "${cmd[@]}" "${args[@]}" 2>&1 | tee "$out"
+        code=${PIPESTATUS[0]}
+        set -e
+        case "$code" in
+          0) verdict=PASS ;;
+          10) verdict=FAIL ;;
+          11) verdict=UNKNOWN ;;
+          *) verdict=ERROR ;;
+        esac
+        echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+        {
+          echo "### opshero: $verdict"
+          echo
+          echo '```text'
+          cat "$out"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+        exit "$code"

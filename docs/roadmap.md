@@ -55,7 +55,7 @@ Kill criterion: below 3 % after 100 sessions, stop feature work and reassess the
 
 ## M4: Integrations (only if M3 passes)
 
-1. `opshero verify --ci` with fail-closed semantics: **done as a prototype** (docs/ci-gate.md). Packaged CI action, required status check and job summary: not done.
+1. `opshero verify --ci` with fail-closed semantics: **done as a prototype** (docs/ci-gate.md). Packaged GitHub Action with job summary: **done 2026-10-22**, exercised on real runners by this repository's CI; a required status check on a real public repository: not done.
 2. Evidence transport local to CI: **done as a prototype** with one git ref per tree (`opshero evidence push|fetch`); 66 end-to-end tests including a forged record and a fresh clone; 6 mutants killed. Not done: locking of concurrent pushes, `evidence prune`, running the example workflow on a real runner.
 3. Codex and Cursor adapters, each verified with a real session before being documented as supported.
 4. SARIF output.

@@ -24,8 +24,9 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT INT TERM
 REL="$T/release"; mkdir -p "$REL"
 
 # 1. the archive is reproducible
-python3 scripts/package_release.py --target "$TARGET" --binary "$BIN" --version "$VERSION" --out "$T/a" > "$T/a.sum"
-python3 scripts/package_release.py --target "$TARGET" --binary "$BIN" --version "$VERSION" --out "$T/b" > "$T/b.sum"
+python3 scripts/gen_extras.py --bin "$BIN" --out "$T/extras" > /dev/null || fail "gen_extras.py"
+python3 scripts/package_release.py --target "$TARGET" --binary "$BIN" --version "$VERSION" --out "$T/a" --extras "$T/extras" > "$T/a.sum"
+python3 scripts/package_release.py --target "$TARGET" --binary "$BIN" --version "$VERSION" --out "$T/b" --extras "$T/extras" > "$T/b.sum"
 cmp -s "$T/a.sum" "$T/b.sum" || fail "two packagings of the same inputs differ"
 ok "packaging is reproducible ($(cut -c1-12 "$T/a.sum"))"
 
@@ -34,12 +35,30 @@ python3 - "$T/a/$NAME.tar.gz" "$NAME" <<'PY' || fail "archive contents"
 import sys, tarfile
 t = tarfile.open(sys.argv[1]); name = sys.argv[2]
 members = {m.name: m for m in t.getmembers()}
-want = {f"{name}/opshero", f"{name}/LICENSE", f"{name}/NOTICE", f"{name}/README.md"}
+want = {f"{name}/{p}" for p in ["opshero", "LICENSE", "NOTICE", "README.md", "share/man/man1/opshero.1",
+        "completions/opshero.bash", "completions/_opshero", "completions/opshero.fish",
+        "completions/opshero.ps1", "completions/opshero.elv"]}
 assert set(members) == want, sorted(members)
 assert all(m.mtime == 0 and m.uid == 0 and m.gid == 0 for m in members.values()), "non-neutral metadata"
 assert members[f"{name}/opshero"].mode == 0o755 and members[f"{name}/LICENSE"].mode == 0o644
 PY
-ok "archive holds exactly the binary, LICENSE, NOTICE and README with neutral metadata"
+ok "archive holds exactly the binary, LICENSE, NOTICE, README, manual page and completions with neutral metadata"
+
+# 2b. the Windows archive is a reproducible zip with opshero.exe (the Linux binary stands in for it)
+WIN="opshero-$VERSION-x86_64-pc-windows-msvc"
+python3 scripts/package_release.py --target x86_64-pc-windows-msvc --binary "$BIN" --version "$VERSION" --out "$T/w1" --extras "$T/extras" > "$T/w1.sum"
+python3 scripts/package_release.py --target x86_64-pc-windows-msvc --binary "$BIN" --version "$VERSION" --out "$T/w2" --extras "$T/extras" > "$T/w2.sum"
+cmp -s "$T/w1.sum" "$T/w2.sum" || fail "two zip packagings of the same inputs differ"
+python3 - "$T/w1/$WIN.zip" "$WIN" <<'PY' || fail "windows archive contents"
+import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1]); name = sys.argv[2]
+names = set(z.namelist())
+assert f"{name}/opshero.exe" in names and f"{name}/opshero" not in names, sorted(names)
+assert f"{name}/share/man/man1/opshero.1" in names and f"{name}/LICENSE" in names
+assert all(i.date_time == (1980, 1, 1, 0, 0, 0) for i in z.infolist()), "timestamps are not neutral"
+assert z.testzip() is None
+PY
+ok "the Windows archive is a reproducible zip holding opshero.exe"
 
 cp "$T/a/$NAME.tar.gz" "$REL/"; cp "$T/a/$NAME.tar.gz.sha256" "$REL/SHA256SUMS"
 run_install() { # extra env words..., prefix in $P
@@ -50,7 +69,8 @@ run_install() { # extra env words..., prefix in $P
 P="$T/p1"; run_install > "$T/out1" 2>&1 || { cat "$T/out1"; fail "good install failed"; }
 [ -x "$P/bin/opshero" ] || fail "binary not installed or not executable"
 "$P/bin/opshero" --version | grep -q "$VERSION" || fail "installed binary reports another version"
-ok "installs and runs"
+[ -f "$P/share/man/man1/opshero.1" ] || fail "the manual page was not installed"
+ok "installs and runs, with the manual page"
 
 # 4. refusals: nothing may be installed, and an existing install must survive
 refuse() { # description, then env words for run_install; $P is set by the caller

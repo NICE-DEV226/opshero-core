@@ -34,6 +34,8 @@ SHELL_T = ["cargo", "test", "-p", "opshero-core", "--lib", "shellcmd"]
 SHELL_DIFF = ["cargo", "test", "-p", "opshero-core", "--test", "shell_differential"]
 POL = "crates/opshero-core/src/policy.rs"
 INSTALL_T = ["sh", "scripts/test-install.sh"]
+DOC = "crates/opshero-cli/src/doctor.rs"
+DOCTOR_T = ["cargo", "test", "-p", "opshero-cli", "doctor"]
 CLIDOC = ["python3", "scripts/gen-cli-docs.py", "--check"]
 POLICY_T = ["cargo", "test", "-p", "opshero-core", "--lib", "policy"]
 ST = "crates/opshero-cli/src/store.rs"
@@ -123,12 +125,21 @@ MUTANTS = [
     ("cli docs: a help text changes without regenerating docs/cli.md", M, "    /// Delete old evidence, keeping the newest records and everything bound to the current content", "    /// Remove old evidence, keeping the newest records and everything bound to the current content", CLIDOC),
     ("cli docs: the generator forgets nested subcommands", "scripts/gen-cli-docs.py", "    for name in subcommands(text):\n        walk(", "    for name in []:\n        walk(", CLIDOC),
     ("package: files owned by a real user id", "scripts/package_release.py", "info.uid = info.gid = 0", "info.uid = info.gid = 1000", INSTALL_T),
-    ("package: the binary is not executable", "scripts/package_release.py", "(f\"{top}/opshero\", binary, 0o755)", "(f\"{top}/opshero\", binary, 0o644)", INSTALL_T),
+    ("package: the binary is not executable", "scripts/package_release.py", "(f\"{top}/{exe}\", binary, 0o755)", "(f\"{top}/{exe}\", binary, 0o644)", INSTALL_T),
     ("git: no cleanup of newly ignored entries", G, "    if !ignored.is_empty() {\n        if ignored.iter().any", "    if false && !ignored.is_empty() {\n        if ignored.iter().any", GIT),
     ("git: one shared index for all exclusion sets", G, 'format!("index-{}", key.get(..32).unwrap_or("default"))', '"index-shared".to_owned()', GIT),
     ("git: check-ignore without --no-index", G, '"check-ignore", "--no-index", "-z"', '"check-ignore", "-z"', GIT),
     ("git: ignored exclusions not dropped", G, "effective_exclude(root, exclude)\n            .iter()", "exclude\n            .iter()", GIT),
     ("git: ancestor existence not considered", G, "let first = e.split('/').next().unwrap_or(e);", "let first = e;", GIT),
+    ("doctor: an invalid policy is only a warning", DOC, "Err(e) => out.push(check(Level::Fail, e.to_string())),", "Err(e) => out.push(check(Level::Warn, e.to_string())),", DOCTOR_T),
+    ("doctor: a missing git is not a failure", DOC, '            out.push(check(\n                Level::Fail,\n                "git was not found', '            out.push(check(\n                Level::Warn,\n                "git was not found', DOCTOR_T),
+    ("doctor: failed() ignores failures", DOC, "checks.iter().any(|c| c.level == Level::Fail)", "checks.iter().any(|c| c.level == Level::Warn)", DOCTOR_T),
+    ("doctor: git minor version ignored", DOC, "let minor = parts.next()?.parse().ok()?;", "let minor = 0;", DOCTOR_T),
+    ("doctor: installed hooks never detected", DOC, "t.contains(install::MARKER)", "t.contains(\"never-present\")", DOCTOR_T),
+    ("doctor: record count off by one", DOC, 'format!("evidence store: {} record(s)", records.len())', 'format!("evidence store: {} record(s)", records.len() + 1)', DOCTOR_T),
+    ("installer: the manual page is not installed", "scripts/install.sh", '  cp "$work/$name/share/man/man1/opshero.1" "$PREFIX/share/man/man1/opshero.1"\n', "", INSTALL_T),
+    ("package: the Windows binary is not named .exe", "scripts/package_release.py", 'exe = "opshero.exe" if windows else "opshero"', 'exe = "opshero"', INSTALL_T),
+    ("package: zip timestamps are not neutral", "scripts/package_release.py", "date_time=(1980, 1, 1, 0, 0, 0)", "date_time=(2024, 1, 1, 0, 0, 0)", INSTALL_T),
 ]
 
 # Mutants with no observable effect, kept so nobody "fixes" them by accident.

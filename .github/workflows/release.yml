@@ -25,6 +25,8 @@ jobs:
           - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, musl: true }
           - { os: macos-latest, target: aarch64-apple-darwin, musl: false }
           - { os: macos-latest, target: x86_64-apple-darwin, musl: false }
+          # Experimental: the test suite passes on Windows in CI, but it has not been tried with a real agent.
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, musl: false }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -37,7 +39,7 @@ jobs:
         shell: bash
         run: |
           BIN="target/${{ matrix.target }}/release/opshero"
-          file "$BIN"
+          if [ "${{ runner.os }}" != "Windows" ]; then file "$BIN"; fi
           if [ "${{ matrix.musl }}" = "true" ]; then
             file "$BIN" | grep -Eq "statically linked|static-pie linked" || { echo "the Linux binary is not static"; exit 1; }
           fi
@@ -46,9 +48,15 @@ jobs:
       - name: Package
         shell: bash
         run: |
+          PY=python3; [ "${{ runner.os }}" = "Windows" ] && PY=python
           VERSION="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
-          python3 scripts/package_release.py --target "${{ matrix.target }}" \
-            --binary "target/${{ matrix.target }}/release/opshero" --version "$VERSION" --out dist
+          # The manual page and completions come from the program's own definitions, which do not
+          # depend on the platform: a host-native build is used so that cross-compiled targets work too.
+          cargo build --locked -q
+          $PY scripts/gen_extras.py --bin target/debug/opshero --out extras
+          EXE=opshero; [ "${{ runner.os }}" = "Windows" ] && EXE=opshero.exe
+          $PY scripts/package_release.py --target "${{ matrix.target }}" \
+            --binary "target/${{ matrix.target }}/release/$EXE" --version "$VERSION" --out dist --extras extras
           ls -l dist
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -76,16 +84,20 @@ jobs:
         run: |
           VERSION="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
           [ "${GITHUB_REF_NAME}" = "v${VERSION}" ] || { echo "tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${VERSION}"; exit 1; }
+          # The action installs the release it was cut with: its default must be this version.
+          grep -q "default: \"${VERSION}\"" action.yml || { echo "action.yml does not default to version ${VERSION}"; exit 1; }
       - name: Checksums
         run: |
           cd dist
-          cat *.tar.gz.sha256 > SHA256SUMS
-          rm ./*.tar.gz.sha256
+          cat *.sha256 > SHA256SUMS
+          rm ./*.sha256
           sha256sum -c SHA256SUMS
           cat SHA256SUMS
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: "dist/*.tar.gz"
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
       - name: Publish a pre-release
         env:
           GH_TOKEN: ${{ github.token }}

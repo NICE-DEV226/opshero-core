@@ -22,15 +22,18 @@ Deterministic evidence that your checks ran on the exact content you are about t
 Usage: opshero <COMMAND>
 
 Commands:
-  init      Write a sample policy to .opshero/policy.toml
-  run       Run a command and record it as evidence (exit code is passed through)
-  verify    Evaluate the policy against the recorded evidence for the current tree
-  ci        Commands for the CI job (assurance A2)
-  evidence  Publish or fetch evidence through a dedicated git ref
-  hook      Agent integrations
-  gc        Delete old evidence, keeping the newest records and everything bound to the current content
-  journal   Opt-in local journal for the dogfooding experiment (no commands, paths or ids are stored)
-  help      Print this message or the help of the given subcommand(s)
+  init         Write a sample policy to .opshero/policy.toml
+  run          Run a command and record it as evidence (exit code is passed through)
+  verify       Evaluate the policy against the recorded evidence for the current tree
+  ci           Commands for the CI job (assurance A2)
+  evidence     Publish or fetch evidence through a dedicated git ref
+  hook         Agent integrations
+  gc           Delete old evidence, keeping the newest records and everything bound to the current content
+  doctor       Check that git, the repository, the policy and the evidence store are in working order
+  completions  Print a shell completion script to stdout
+  man          Print the manual page (roff) to stdout
+  journal      Opt-in local journal for the dogfooding experiment (no commands, paths or ids are stored)
+  help         Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help
@@ -217,6 +220,42 @@ Options:
       --keep <KEEP>  How many of the newest records to keep (the evidence for the current content is kept as well) [default: 2000]
       --dry-run      Only report what would be removed
   -h, --help         Print help
+```
+
+## `opshero doctor`
+
+```text
+Check that git, the repository, the policy and the evidence store are in working order
+
+Usage: opshero doctor
+
+Options:
+  -h, --help  Print help
+```
+
+## `opshero completions`
+
+```text
+Print a shell completion script to stdout
+
+Usage: opshero completions <SHELL>
+
+Arguments:
+  <SHELL>  [possible values: bash, elvish, fish, powershell, zsh]
+
+Options:
+  -h, --help  Print help
+```
+
+## `opshero man`
+
+```text
+Print the manual page (roff) to stdout
+
+Usage: opshero man
+
+Options:
+  -h, --help  Print help
 ```
 
 ## `opshero journal`

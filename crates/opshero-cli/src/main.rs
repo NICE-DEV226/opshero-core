@@ -6,6 +6,7 @@
 
 mod baseline;
 mod claude;
+mod doctor;
 mod evidence;
 mod git;
 mod install;
@@ -116,6 +117,15 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Check that git, the repository, the policy and the evidence store are in working order
+    Doctor,
+    /// Print a shell completion script to stdout
+    Completions {
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
+    /// Print the manual page (roff) to stdout
+    Man,
     /// Opt-in local journal for the dogfooding experiment (no commands, paths or ids are stored)
     Journal {
         #[command(subcommand)]
@@ -258,6 +268,17 @@ fn main() -> ExitCode {
                 policy_ref,
             } => ci_run(policy.as_deref(), policy_ref.as_deref(), allow_local),
         },
+        Cmd::Doctor => doctor_cmd(),
+        Cmd::Completions { shell } => {
+            clap_complete::generate(
+                shell,
+                &mut <Cli as clap::CommandFactory>::command(),
+                "opshero",
+                &mut std::io::stdout(),
+            );
+            Ok(0)
+        }
+        Cmd::Man => man_cmd(),
         Cmd::Journal { cmd } => journal_cmd(cmd),
         Cmd::Gc { keep, dry_run } => gc_cmd(keep as usize, dry_run),
         Cmd::Hook { cmd } => match cmd {
@@ -591,6 +612,26 @@ fn verify_cmd(
         Verdict::Fail => EXIT_FAIL,
         Verdict::Unknown => EXIT_UNKNOWN,
     })
+}
+
+fn doctor_cmd() -> Outcome {
+    let cwd = std::env::current_dir()
+        .map_err(|e| internal(format!("cannot read current directory: {e}")))?;
+    let checks = doctor::run(&cwd);
+    print!("{}", doctor::render(&checks));
+    Ok(u8::from(doctor::failed(&checks)))
+}
+
+fn man_cmd() -> Outcome {
+    let mut buf = Vec::new();
+    clap_mangen::Man::new(<Cli as clap::CommandFactory>::command())
+        .render(&mut buf)
+        .map_err(|e| internal(format!("cannot render the manual page: {e}")))?;
+    use std::io::Write;
+    std::io::stdout()
+        .write_all(&buf)
+        .map_err(|e| internal(format!("cannot write the manual page: {e}")))?;
+    Ok(0)
 }
 
 /// Called by Claude Code. Always exits 0 so that a problem here never breaks the agent.

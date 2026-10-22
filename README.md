@@ -2,26 +2,38 @@
 
 > Deterministic, replayable evidence that the checks you rely on **actually ran on the exact content you are about to merge**.
 
-**Status: pre-alpha, not yet released.** The full test suite passes in CI on Linux and macOS, and on Windows with Git for Windows (Windows is not a supported platform yet: it has not been exercised with a real agent). Implemented and tested: evidence records bound to a git tree, a deterministic policy verdict (PASS / FAIL / UNKNOWN), a Claude Code adapter (hooks, optional Stop gate), flaky-command handling (`repeat`), publishing evidence to a git ref and fetching it in CI (`opshero verify --ci`), and CI-executed evidence at assurance A2 (`opshero ci run`). **Not built:** signed attestations (assurance A3), Codex and Cursor adapters, a packaged CI action, release binaries and an installer. Exact state, measurements and known limits: [docs/status.md](docs/status.md). **Demand for this tool is unproven.**
+**Status: pre-alpha.** A pre-release (`v0.0.1`) is published. The full test suite (233 tests) passes in CI on Linux and macOS, and on Windows with Git for Windows (Windows is experimental: it has not been exercised with a real agent). Implemented and tested: evidence records bound to a git tree, a deterministic policy verdict (PASS / FAIL / UNKNOWN), a Claude Code adapter (hooks, optional Stop gate), flaky-command handling (`repeat`), publishing evidence to a git ref and fetching it in CI (`opshero verify --ci`), CI-executed evidence at assurance A2 (`opshero ci run`), a GitHub Action for the gate, and `opshero doctor`. **Not built:** detection of changes the checks never exercised, signed attestations (assurance A3), Codex and Cursor adapters. Exact state, measurements and known limits: [docs/status.md](docs/status.md). **Demand for this tool is unproven.**
 
 ### Install
-A pre-release (`v0.0.1`) with static Linux and macOS binaries is published: [releases](https://github.com/NICE-DEV226/opshero-core/releases). Checksums and signed provenance are attached; how to verify them and how to use the installer: [docs/releasing.md](docs/releasing.md). Or build from source.
+Linux and macOS (static binaries; checksum verified, nothing installed if a check fails):
+```
+curl -fsSL https://raw.githubusercontent.com/NICE-DEV226/opshero-core/main/scripts/install.sh -o install.sh
+less install.sh      # read it first
+sh install.sh        # installs to ~/.local/bin
+```
+Windows (experimental): `scripts/install.ps1`. Releases, checksums, signed build provenance and how to verify them: [docs/releasing.md](docs/releasing.md). From source: `cargo build --release` (Rust 1.98, pinned by `rust-toolchain.toml`).
 
 ### Try it
 ```
-cargo build --release          # Rust 1.98, pinned by rust-toolchain.toml
-target/release/opshero init    # writes .opshero/policy.toml: edit the required command
-target/release/opshero run -- <your test command>
-target/release/opshero verify  # exit 0 PASS, 10 FAIL, 11 UNKNOWN
+opshero doctor                 # checks git, the repository, the policy and the store
+opshero init                   # writes .opshero/policy.toml: edit the required command
+opshero run -- <your test command>
+opshero verify                 # exit 0 PASS, 10 FAIL, 11 UNKNOWN
 ```
-CI gate and the A2 workflow: [docs/ci-gate.md](docs/ci-gate.md).
+Shell completions: `opshero completions bash|zsh|fish|powershell|elvish`. Manual page: `opshero man`.
+
+### In CI
+```yaml
+- uses: NICE-DEV226/opshero-core@v0.0.2
+```
+Details, threat model and the A2 workflow: [docs/ci-gate.md](docs/ci-gate.md).
 
 ## Why this exists
 
 Coding agents now write a large share of changes, and the bottleneck moved from *writing* code to *trusting* it. Two failure patterns are cheap to detect by machine and expensive for a human reviewer to catch:
 
 1. **Stale evidence** — "tests pass" was true for an earlier version of the change, not for the one in the pull request.
-2. **Unexercised change** — the checks that ran never touched the files that were modified.
+2. **Unexercised change** — the checks that ran never touched the files that were modified. *Not detected yet*: it needs the files a run read to be observed (docs/roadmap.md); today the tool catches the first pattern only.
 
 This tool records what ran, binds that record to the **git tree** it ran against, evaluates it against a small written policy, and gives a verdict that a CI gate (or a human) can recompute later from the same inputs, with no service involved. A signed attestation of that verdict is planned, not built offline.
 

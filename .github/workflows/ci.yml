@@ -26,6 +26,8 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-24.04, experimental: false, bash_required: "1" }
+          # The oldest git this tool claims to support (see doctor.rs MIN_TESTED_GIT): git 2.34.
+          - { os: ubuntu-22.04, experimental: true, bash_required: "1" }
           # macOS has no `timeout` and an old /bin/bash: the bash differential test skips itself there.
           - { os: macos-latest, experimental: false, bash_required: "" }
           # Windows is not supported yet. This job only reports what breaks; it never fails the build.
@@ -43,9 +45,69 @@ jobs:
       # Packaging and installer, against a fake local release (not for Windows: no installer there).
       - run: sh scripts/test-install.sh
         if: runner.os != 'Windows'
+      # The Windows installer, against a fake local release.
+      - run: |
+          cargo build --release --locked
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-install.ps1
+        if: runner.os == 'Windows'
       # docs/cli.md is generated from the program's own --help: it must be current.
       - run: python3 scripts/gen-cli-docs.py --check
         if: runner.os == 'Linux'
+
+  action:
+    # The packaged action (action.yml) on real runners: once with this build, once downloading the
+    # published release through the installer. The fixture policy requires a command that passes,
+    # then one that fails; the action must report PASS and fail the step with FAIL.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+        source: [build, release]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: cargo build --release --locked
+        if: matrix.source == 'build'
+      - name: Fixture repository
+        shell: bash
+        run: |
+          set -eu
+          d="$RUNNER_TEMP/fx"; mkdir -p "$d/.opshero"; cd "$d"
+          git init -q -b main
+          git config user.email t@example.com; git config user.name t
+          echo a > a
+          printf 'version = 1\nid = "fx"\n[[require]]\nid = "t"\ncheck = "evidence.fresh"\ncommand = ["sh", "-c", "exit 0"]\nmin_assurance = "A2"\nseverity = "block"\n' > .opshero/policy.toml
+          git add -A; git commit -qm init
+      - id: pass
+        uses: ./
+        with:
+          working-directory: ${{ runner.temp }}/fx
+          opshero-path: ${{ matrix.source == 'build' && 'target/release/opshero' || '' }}
+          policy-ref: ""
+          version: "0.0.1"
+      - name: A passing requirement is reported as PASS
+        shell: bash
+        run: test "${{ steps.pass.outputs.verdict }}" = PASS
+      - name: Make the requirement fail
+        shell: bash
+        run: |
+          set -eu
+          cd "$RUNNER_TEMP/fx"
+          sed -i.bak 's/exit 0/exit 3/' .opshero/policy.toml && rm .opshero/policy.toml.bak
+          git commit -qam "failing requirement"
+      - id: fail
+        uses: ./
+        continue-on-error: true
+        with:
+          working-directory: ${{ runner.temp }}/fx
+          opshero-path: ${{ matrix.source == 'build' && 'target/release/opshero' || '' }}
+          policy-ref: ""
+          version: "0.0.1"
+      - name: A failing requirement fails the step and is reported as FAIL
+        shell: bash
+        run: |
+          test "${{ steps.fail.outcome }}" = failure
+          test "${{ steps.fail.outputs.verdict }}" = FAIL
 
   deny:
     runs-on: ubuntu-24.04

@@ -1,6 +1,6 @@
 # CI gate: publish evidence, verify it in CI
 
-Status: prototype, 2026-10-21 (transport and A2 execution implemented). The commands below are implemented and tested end to end against a real bare remote and real clones (`crates/opshero-cli/tests/e2e.rs`, section "Evidence transport"). The CI workflow at the end is an **example that has not run on a real runner**.
+Status: prototype, updated 2026-10-22 (transport, A2 execution and a packaged GitHub Action). The commands below are implemented and tested end to end against a real bare remote and real clones (`crates/opshero-cli/tests/e2e.rs`, section "Evidence transport"). The Action is exercised on real GitHub runners by this repository's own CI (job `action`: Linux and macOS, with the build under test and with the published release; it must report PASS for a passing requirement and fail the step with FAIL for a failing one).
 
 ## The loop
 
@@ -56,7 +56,29 @@ What A2 does **not** do, stated plainly:
 - **Same tree, two machines at once.** The merge on push reads the remote ref and writes a new commit; two simultaneous pushes for the same tree can lose one machine's records (last writer wins). The lost records can be published again by the next push from that machine. Not locked in this prototype.
 - **Refs accumulate** (one per tree). There is no `evidence prune` yet; they are cheap (a few kilobytes) and can be deleted with `git push origin --delete <ref>`.
 
-## Example workflows (not yet run on a real runner)
+## The GitHub Action
+
+The repository root is a composite action (`action.yml`). It installs a release with the verified installer (Linux and macOS runners), enforces the policy of the pull request's target branch, writes the verdict and the findings to the job summary, exposes a `verdict` output (`PASS`, `FAIL`, `UNKNOWN`, `ERROR`) and exits with the tool's own exit code, so the step fails on anything but PASS.
+
+```yaml
+name: opshero-gate
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The content the author wrote, not the merge commit.
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: NICE-DEV226/opshero-core@v0.0.2   # mode: run (A2) by default
+```
+
+Inputs: `mode` (`run` or `verify`), `policy`, `policy-ref` (default `auto`: `origin/<base branch>` on a pull request), `version`, `opshero-path`, `working-directory`. Pin the action to a release tag: its `version` default is the release it was cut with. Windows runners are not supported by the Action yet.
+
+### The same thing by hand
 
 A2, the strong form: the CI runs the checks. Nothing from the author is trusted.
 
@@ -69,11 +91,11 @@ jobs:
   gate:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The content the author wrote, not the merge commit.
           ref: ${{ github.event.pull_request.head.sha }}
-      # Install the opshero binary here (no release tooling exists yet).
+      # Install the opshero binary first: sh install.sh (see docs/releasing.md).
       # The policy comes from the target branch, not from the pull request.
       - run: opshero ci run --policy-ref "origin/${{ github.base_ref }}"
 ```

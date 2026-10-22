@@ -74,6 +74,13 @@ mkdir -p "$PREFIX/bin"
 cp "$work/$name/opshero" "$PREFIX/bin/opshero.new"
 chmod 755 "$PREFIX/bin/opshero.new"
 mv -f "$PREFIX/bin/opshero.new" "$PREFIX/bin/opshero"
+if [ -f "$work/$name/share/man/man1/opshero.1" ]; then
+  mkdir -p "$PREFIX/share/man/man1"
+  cp "$work/$name/share/man/man1/opshero.1" "$PREFIX/share/man/man1/opshero.1"
+  chmod 644 "$PREFIX/share/man/man1/opshero.1"
+fi
 printf 'opshero install: installed %s\n' "$PREFIX/bin/opshero"
 "$PREFIX/bin/opshero" --version
 case ":$PATH:" in *":$PREFIX/bin:"*) ;; *) printf 'opshero install: add %s/bin to your PATH\n' "$PREFIX" ;; esac
+printf 'opshero install: shell completions: opshero completions bash|zsh|fish|powershell|elvish (see opshero completions --help)\n'
+printf 'opshero install: check your setup in a repository with: opshero doctor\n'

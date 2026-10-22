@@ -190,3 +190,18 @@ Tests: 221 passing. Mutants: 85 killed.
 A CI job installs the nightly toolchain and `cargo-fuzz` and runs four libFuzzer targets for 60 seconds each: `policy`, `record`, `canon`, `shellcmd` (`fuzz/`, seed corpora committed). The targets check **properties**, not just the absence of crashes: an accepted policy satisfies the invariants the evaluator relies on and no exclusion matches everything; an accepted record's id is the hash of its content; canonical JSON round-trips and is idempotent; a simple shell command has a sane program name and no exotic whitespace. First run on a real runner: 644,301, 3,969,366, 4,449,284 and 2,623,016 executions, no crash, no property violation. One of my own properties was wrong before the first run (a record may carry unknown fields covered by its id) and was corrected by reading it, not by the fuzzer.
 
 Limits, stated plainly. This is a 60-second smoke run on every push, not a long campaign: a scheduled multi-hour job would be the next step. **Nothing has yet shown that these fuzzers can find a defect**: the injected-defect check (scripts/mutation-check.py) covers the unit, property, differential and end-to-end tests, not the fuzz targets, and the nightly toolchain is not installed on the development machine. The shell analyzer is covered more strongly by the differential test against bash than by this target.
+
+## Update 2026-10-22 (installability)
+What was added so that the tool can be installed and used without reading the source:
+
+| Item | State | Evidence |
+|---|---|---|
+| `opshero doctor` (git version, repository, policy, working-tree measurement, evidence store, hooks) | done | 5 unit tests, 5 end-to-end tests including "git missing" and "invalid policy"; 6 mutants killed |
+| Shell completions (`opshero completions <shell>`) and manual page (`opshero man`), generated from the program's definitions | done | end-to-end tests for all five shells and for the roff header; generated files are identical across runs |
+| Release archives carry the manual page and completions; the installer installs the manual page | done | `scripts/test-install.sh` checks exact archive contents; 3 more mutants killed |
+| Windows: `x86_64-pc-windows-msvc` build, `.zip` archive, `scripts/install.ps1` | **written; the installer test runs on a Windows runner in CI** (experimental) | zip reproducibility and contents are tested on Linux; the PowerShell installer is exercised only by the Windows CI job |
+| GitHub Action (`action.yml`): installs a release, enforces the target branch's policy, job summary, `verdict` output | done | its shell logic was run locally with simulated GitHub variables (PASS, FAIL with summary, invalid mode); CI job `action` runs it on Linux and macOS with the build under test and with the published release |
+| crates.io readiness | partial | names free on 2026-10-22; `opshero-core` packaged and built from its package; `opshero-cli` verifiable only after the first publication; `publish = false` until the maintainer decides |
+| Oldest git version | being measured | CI job on Ubuntu 22.04 (git 2.34), informational; `doctor` warns below 2.34 |
+
+Tests: 233 passing. Still not done: Homebrew (a tap needs its own repository), `.deb`/`.rpm`, a Windows run with a real agent, detection of unexercised changes.
