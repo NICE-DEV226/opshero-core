@@ -295,29 +295,87 @@ pub fn changed_paths(
         .collect())
 }
 
-/// Resolve `refname` to a commit id. If it is not known locally and looks like
-/// `<remote>/<branch>` for a configured remote, fetch that branch first (a CI checkout of a pull
-/// request usually has only the head, not the target branch).
+/// Resolve `refname` to a commit id, EXACTLY. Git's own name lookup is ambiguous on purpose
+/// (`main` finds a tag before a branch, `origin/main` finds a tag or a local branch before the
+/// remote-tracking ref), and a gate that reads its policy from a ref must not be steerable by an
+/// object of the same name in another namespace. So only these forms are accepted:
+///
+/// - a full commit id (40 or 64 hex digits);
+/// - a fully qualified ref, `refs/...`;
+/// - `<remote>/<branch>` for a configured remote: always fetched, then read from exactly
+///   `refs/remotes/<remote>/<branch>` (a shallow pull-request checkout does not have it);
+/// - a bare branch name, read from exactly `refs/heads/<name>`.
+///
+/// Anything else, and any name that could be taken for an option, is refused before git sees it.
 pub fn resolve_or_fetch(root: &Path, refname: &str) -> Result<String> {
-    let rev = format!("{refname}^{{commit}}");
-    if let Ok(sha) = run_git(root, &["rev-parse", "--verify", "-q", &rev], &[]) {
-        return Ok(sha);
+    validate_refname(refname)?;
+    if is_full_commit_id(refname) {
+        return resolve_exact(root, refname);
+    }
+    if refname.starts_with("refs/") {
+        return resolve_exact(root, refname);
     }
     if let Some((remote, branch)) = refname.split_once('/')
-        && !branch.is_empty()
         && crate::evidence::remote_exists(root, remote)
     {
-        let spec = format!("+refs/heads/{branch}:refs/remotes/{remote}/{branch}");
+        let tracking = format!("refs/remotes/{remote}/{branch}");
+        let spec = format!("+refs/heads/{branch}:{tracking}");
         run_git(
             root,
             &["fetch", "--quiet", "--no-tags", "--depth=1", remote, &spec],
             &[],
         )
         .map_err(|e| format!("cannot fetch `{refname}` from `{remote}`: {e}"))?;
-        return run_git(root, &["rev-parse", "--verify", "-q", &rev], &[])
-            .map_err(|_| format!("`{refname}` is not a commit even after fetching it"));
+        return resolve_exact(root, &tracking);
     }
-    Err(format!("`{refname}` is not a known commit or branch"))
+    resolve_exact(root, &format!("refs/heads/{refname}"))
+}
+
+fn is_full_commit_id(s: &str) -> bool {
+    matches!(s.len(), 40 | 64) && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// Reject names that git could read as an option, a revision expression or a range, before any
+/// git process sees them.
+fn validate_refname(name: &str) -> Result<()> {
+    let bad = |why: &str| Err(format!("`{name}` is not an acceptable ref name: {why}"));
+    if name.is_empty() {
+        return bad("it is empty");
+    }
+    if name.starts_with('-') {
+        return bad("it starts with `-`");
+    }
+    if name.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return bad("it contains whitespace or control characters");
+    }
+    if is_full_commit_id(name) {
+        return Ok(());
+    }
+    // git's own grammar for ref names (no `..`, `@{`, `^`, `~`, `:`, `?`, `*`, `[`, `\`, ...).
+    let probe = if name.starts_with("refs/") {
+        name.to_owned()
+    } else {
+        format!("refs/heads/{name}")
+    };
+    let ok = Command::new("git")
+        .args(["check-ref-format", &probe])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if ok {
+        Ok(())
+    } else {
+        bad("git does not accept it as a ref name")
+    }
+}
+
+fn resolve_exact(root: &Path, full: &str) -> Result<String> {
+    run_git(
+        root,
+        &["rev-parse", "--verify", "-q", &format!("{full}^{{commit}}")],
+        &[],
+    )
+    .map_err(|_| format!("`{full}` is not a known commit or branch"))
 }
 
 /// Contents of `path` in commit `sha`.

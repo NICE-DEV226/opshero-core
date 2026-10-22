@@ -2338,3 +2338,109 @@ fn policy_and_policy_ref_cannot_be_combined() {
     );
     assert_eq!(code(&o), 2, "{}{}", out(&o), err(&o));
 }
+
+// Ambiguous names: git resolves `main` to a TAG before a branch, and `origin/main` to a tag or a
+// local branch before the remote-tracking ref. The policy must come from exactly the ref the
+// operator meant (security review, 2026-10-22).
+
+#[test]
+fn a_tag_named_like_the_target_branch_cannot_substitute_the_policy() {
+    let d = base_and_weakened_pr(); // on `pr`, whose policy is weakened; `main` has the real one
+    git(d.path(), &["tag", "main"]); // a tag `main` on the weakened commit
+    assert_eq!(code(&opshero(d.path(), &["run", "--", "true"])), 0);
+    let v = opshero(d.path(), &["verify", "--policy-ref", "main"]);
+    assert_eq!(
+        code(&v),
+        11,
+        "the branch `main` must win over a tag called `main`: {}{}",
+        out(&v),
+        err(&v)
+    );
+    assert!(out(&v).contains("sh t.sh"), "{}", out(&v));
+    let main_sha = git_out(d.path(), &["rev-parse", "refs/heads/main"]);
+    assert!(
+        out(&v).contains(&main_sha[..12]),
+        "the commit named in the report must be the branch's: {}",
+        out(&v)
+    );
+}
+
+#[test]
+fn a_tag_or_branch_named_origin_main_cannot_substitute_the_remote_tracking_ref() {
+    let (dev, remote) = dev_with_remote();
+    fs::write(dev.path().join("t.sh"), "exit 0\n").unwrap();
+    ci_policy(dev.path(), "[\"sh\", \"t.sh\"]", "");
+    git(dev.path(), &["add", "-A"]);
+    git(dev.path(), &["commit", "-q", "-m", "base policy"]);
+    git(dev.path(), &["push", "-q", "origin", "main"]);
+    git(dev.path(), &["checkout", "-q", "-b", "pr"]);
+    ci_policy(dev.path(), "[\"true\"]", "");
+    git(dev.path(), &["add", "-A"]);
+    git(dev.path(), &["commit", "-q", "-m", "weaken"]);
+    git(dev.path(), &["push", "-q", "origin", "pr"]);
+    let ci = TempDir::new().unwrap();
+    let url = format!("file://{}", remote.path().display());
+    assert!(
+        Command::new("git")
+            .args([
+                "clone",
+                "-q",
+                "--depth=1",
+                "--single-branch",
+                "--branch",
+                "pr",
+                &url
+            ])
+            .arg(ci.path())
+            .status()
+            .unwrap()
+            .success()
+    );
+    // The spoofs, both pointing at the weakened commit.
+    git(ci.path(), &["tag", "origin/main"]);
+    git(ci.path(), &["branch", "origin/main"]);
+    let o = opshero_ci(ci.path(), &["ci", "run", "--policy-ref", "origin/main"]);
+    assert_eq!(code(&o), 0, "{}{}", out(&o), err(&o));
+    let recs = read_records(ci.path());
+    assert_eq!(recs.len(), 1);
+    assert_eq!(
+        recs[0]["command"]["argv"],
+        serde_json::json!(["sh", "t.sh"]),
+        "the real target branch's policy must run, not the spoof's `true`"
+    );
+}
+
+#[test]
+fn a_ref_that_could_be_taken_for_an_option_is_refused_before_git_sees_it() {
+    let d = base_and_weakened_pr();
+    for bad in [
+        "--upload-pack=touch /tmp/pwned",
+        "-x",
+        "--output=/tmp/x/y",
+        "a b",
+        "main..pr",
+        "main^{tree}",
+        "@{-1}",
+    ] {
+        let o = opshero(d.path(), &["verify", &format!("--policy-ref={bad}")]);
+        assert_eq!(
+            code(&o),
+            2,
+            "{bad:?} must be refused: {}{}",
+            out(&o),
+            err(&o)
+        );
+    }
+    assert!(!Path::new("/tmp/pwned").exists());
+}
+
+#[test]
+fn a_full_ref_name_or_a_full_commit_id_is_accepted() {
+    let d = base_and_weakened_pr();
+    let main_sha = git_out(d.path(), &["rev-parse", "refs/heads/main"]);
+    for good in ["refs/heads/main", main_sha.as_str()] {
+        let v = opshero(d.path(), &["verify", "--policy-ref", good]);
+        assert_eq!(code(&v), 11, "{good}: {}{}", out(&v), err(&v));
+        assert!(out(&v).contains("sh t.sh"), "{good}: {}", out(&v));
+    }
+}

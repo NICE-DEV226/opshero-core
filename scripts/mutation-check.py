@@ -111,6 +111,8 @@ MUTANTS = [
     ("policy-ref: the ref is ignored and the checked-out file is used", M, "    if let Some(name) = policy_ref {", "    if let Some(name) = policy_ref.filter(|_| false) {", E2E),
     ("policy-ref: a missing target branch is never fetched", "crates/opshero-cli/src/git.rs", "        && crate::evidence::remote_exists(root, remote)\n", "        && false\n        && crate::evidence::remote_exists(root, remote)\n", E2E),
     ("policy-ref: the source of the policy is not stated", M, "    fn note(&self) -> Option<String> {\n        match self {", "    fn note(&self) -> Option<String> {\n        #[allow(unreachable_code)]\n        return None;\n        match self {", E2E),
+    ("policy-ref: a bare name falls back to git's loose lookup (a tag can win)", "crates/opshero-cli/src/git.rs", '    resolve_exact(root, &format!("refs/heads/{refname}"))', "    resolve_exact(root, refname)", E2E),
+    ("policy-ref: the remote-tracking ref is read by loose name (a tag or branch can win)", "crates/opshero-cli/src/git.rs", "        return resolve_exact(root, &tracking);", "        return resolve_exact(root, refname);", E2E),
     ("git: no cleanup of newly ignored entries", G, "    if !ignored.is_empty() {\n        if ignored.iter().any", "    if false && !ignored.is_empty() {\n        if ignored.iter().any", GIT),
     ("git: one shared index for all exclusion sets", G, 'format!("index-{}", key.get(..32).unwrap_or("default"))', '"index-shared".to_owned()', GIT),
     ("git: check-ignore without --no-index", G, '"check-ignore", "--no-index", "-z"', '"check-ignore", "-z"', GIT),
@@ -121,6 +123,7 @@ MUTANTS = [
 # Mutants with no observable effect, kept so nobody "fixes" them by accident.
 EQUIVALENT = {
     "shell: newline as a predecessor of a comment": "an unquoted newline is refused before any later `#` is examined, so the extra case is unreachable; kept as defense in depth",
+    "policy-ref: validation of the ref name (leading dash, git check-ref-format)": "every name that validation refuses is also looked up as `refs/heads/<name>` and not found, so the user-visible result is the same usage error; kept because a name must never reach git unchecked",
     "store: non-atomic write of the chain head": "readers take the chain lock, so nobody observes a partial head; kept atomic as defense in depth",
     "stats: round down instead of up": "no input among 60,000 random ones changes the answer; rounding up is kept for the formal guarantee (RFC-0005 section 3.2)",
 }
