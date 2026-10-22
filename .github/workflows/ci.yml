@@ -64,5 +64,5 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      # Injects 78 known defects; every one must be caught by a failing test.
+      # Injects 83 known defects; every one must be caught by a failing test.
       - run: python3 scripts/mutation-check.py
