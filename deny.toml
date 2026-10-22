@@ -1,0 +1,32 @@
+# cargo-deny configuration: run in CI (`deny` job) and locally with `cargo deny check`.
+
+[graph]
+all-features = true
+
+[advisories]
+# Known vulnerabilities and unmaintained crates in the dependency graph fail the build.
+version = 2
+
+[licenses]
+version = 2
+# Compatible with Apache-2.0. A dependency that is dual-licensed only needs one of these.
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "Zlib",
+    "Unlicense",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.93
+
+[bans]
+# Several versions of a crate are tolerated (the tree is small) but reported.
+multiple-versions = "warn"
+wildcards = "deny"
+# Our own crates depend on each other by path inside the workspace.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

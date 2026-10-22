@@ -64,12 +64,14 @@ fn bash_builtins() -> &'static std::collections::HashSet<String> {
     })
 }
 
+/// The harness needs `bash` and `timeout` (macOS does not ship the latter).
 fn bash_available() -> bool {
-    Command::new("bash")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    locate("timeout").is_some()
+        && Command::new("bash")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
 }
 
 /// One private sandbox per test thread, reused for every call: an empty working directory (so globs
