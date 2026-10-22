@@ -39,7 +39,7 @@ How A2 stays honest:
 
 - **Published evidence can never be A2.** Records fetched with `evidence fetch` or `verify --ci` are stored apart (`.git/opshero/imported/`) and read back with their assurance capped at A1 *everywhere*, whatever they claim, including in later commands on a runner that keeps its checkout. A publisher can write a well-formed record that says A2; it is still counted as A1 (tested with a record whose hash is valid for the lie).
 - **`ci run` refuses to run when the `CI` environment variable is not set** (`--allow-local` overrides it, for testing). Otherwise a developer could stamp A2 on a local run by accident.
-- **Use the policy of the target branch, not the one in the pull request.** A pull request that changes `.opshero/policy.toml` could remove or weaken a requirement. Fetch the trusted file from the base branch and pass it with `--policy`.
+- **Use the policy of the target branch, not the one in the pull request.** A pull request that changes `.opshero/policy.toml` could remove or weaken a requirement. Pass `--policy-ref origin/<target>` to `ci run` and to `verify`: the policy is then read from that commit (a `<remote>/<branch>` ref that a shallow pull-request checkout does not have is fetched automatically), the report says `policy taken from ...`, and the untrusted-policy warning disappears. `--policy <file>` remains for a policy you obtained another way.
 
 What A2 does **not** do, stated plainly:
 
@@ -73,18 +73,15 @@ jobs:
         with:
           # The content the author wrote, not the merge commit.
           ref: ${{ github.event.pull_request.head.sha }}
-      - name: Take the policy from the target branch, not from the pull request
-        run: |
-          git fetch --depth=1 origin "${{ github.base_ref }}"
-          git show FETCH_HEAD:.opshero/policy.toml > "$RUNNER_TEMP/policy.toml"
       # Install the opshero binary here (no release tooling exists yet).
-      - run: opshero ci run --policy "$RUNNER_TEMP/policy.toml"
+      # The policy comes from the target branch, not from the pull request.
+      - run: opshero ci run --policy-ref "origin/${{ github.base_ref }}"
 ```
 
 A1, the light form: the author publishes the evidence; useful to catch forgotten or stale checks without re-running them.
 
 ```yaml
-      - run: opshero verify --ci --format json
+      - run: opshero verify --ci --policy-ref "origin/${{ github.base_ref }}" --format json
 ```
 
 Make the job a required status check in the branch protection rules. Teach developers and agents to run `opshero evidence push` before pushing (a `pre-push` git hook can do it; it is never installed without consent).

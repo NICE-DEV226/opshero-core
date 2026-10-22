@@ -295,6 +295,36 @@ pub fn changed_paths(
         .collect())
 }
 
+/// Resolve `refname` to a commit id. If it is not known locally and looks like
+/// `<remote>/<branch>` for a configured remote, fetch that branch first (a CI checkout of a pull
+/// request usually has only the head, not the target branch).
+pub fn resolve_or_fetch(root: &Path, refname: &str) -> Result<String> {
+    let rev = format!("{refname}^{{commit}}");
+    if let Ok(sha) = run_git(root, &["rev-parse", "--verify", "-q", &rev], &[]) {
+        return Ok(sha);
+    }
+    if let Some((remote, branch)) = refname.split_once('/')
+        && !branch.is_empty()
+        && crate::evidence::remote_exists(root, remote)
+    {
+        let spec = format!("+refs/heads/{branch}:refs/remotes/{remote}/{branch}");
+        run_git(
+            root,
+            &["fetch", "--quiet", "--no-tags", "--depth=1", remote, &spec],
+            &[],
+        )
+        .map_err(|e| format!("cannot fetch `{refname}` from `{remote}`: {e}"))?;
+        return run_git(root, &["rev-parse", "--verify", "-q", &rev], &[])
+            .map_err(|_| format!("`{refname}` is not a commit even after fetching it"));
+    }
+    Err(format!("`{refname}` is not a known commit or branch"))
+}
+
+/// Contents of `path` in commit `sha`.
+pub fn show_file_at(root: &Path, sha: &str, path: &str) -> Result<String> {
+    run_git(root, &["show", &format!("{sha}:{path}")], &[])
+}
+
 /// `dirty` = tracked or untracked (non-ignored) changes exist outside the
 /// excluded paths, according to `git status`.
 pub fn is_dirty(root: &Path, exclude: &[String]) -> bool {

@@ -86,6 +86,11 @@ enum Cmd {
         /// Remote holding the published evidence (with --ci)
         #[arg(long, requires = "ci", default_value = "origin")]
         remote: String,
+        /// Read the policy from this git ref (for example `origin/main`, the target branch) instead
+        /// of the checked-out content, which the author of the change controls. A ref of the form
+        /// `<remote>/<branch>` that is not present locally is fetched.
+        #[arg(long, value_name = "REF", conflicts_with = "policy")]
+        policy_ref: Option<String>,
     },
     /// Commands for the CI job (assurance A2)
     Ci {
@@ -129,6 +134,10 @@ enum CiCmd {
         /// Run even when the CI environment variable is not set (for testing only)
         #[arg(long)]
         allow_local: bool,
+        /// Read the policy from this git ref (for example `origin/main`) instead of the
+        /// checked-out content. A `<remote>/<branch>` ref that is not present locally is fetched.
+        #[arg(long, value_name = "REF", conflicts_with = "policy")]
+        policy_ref: Option<String>,
     },
 }
 
@@ -234,13 +243,20 @@ fn main() -> ExitCode {
             format,
             ci,
             remote,
-        } => verify_cmd(&policy, format, ci.then_some(remote.as_str())),
+            policy_ref,
+        } => verify_cmd(
+            &policy,
+            policy_ref.as_deref(),
+            format,
+            ci.then_some(remote.as_str()),
+        ),
         Cmd::Evidence { cmd } => evidence_cmd(cmd),
         Cmd::Ci { cmd } => match cmd {
             CiCmd::Run {
                 policy,
                 allow_local,
-            } => ci_run(policy.as_deref(), allow_local),
+                policy_ref,
+            } => ci_run(policy.as_deref(), policy_ref.as_deref(), allow_local),
         },
         Cmd::Journal { cmd } => journal_cmd(cmd),
         Cmd::Gc { keep, dry_run } => gc_cmd(keep as usize, dry_run),
@@ -484,12 +500,48 @@ fn warn_if_policy_is_untrusted(root: &Path, policy_file: &Path) {
     }
 }
 
-fn verify_cmd(policy_path: &Path, format: Format, ci_remote: Option<&str>) -> Outcome {
-    let (root, gitdir) = locate()?;
-    let path = if policy_path.is_absolute() {
-        policy_path.to_path_buf()
+/// Where the policy being enforced came from.
+enum PolicySource {
+    /// A file in the checked-out content: the author of the change controls it.
+    File(PathBuf),
+    /// A commit the author does not control (for example the target branch).
+    Ref { name: String, sha: String },
+}
+
+impl PolicySource {
+    fn note(&self) -> Option<String> {
+        match self {
+            Self::File(_) => None,
+            Self::Ref { name, sha } => Some(format!(
+                "policy taken from `{name}` (commit {})",
+                &sha[..sha.len().min(12)]
+            )),
+        }
+    }
+}
+
+/// Read the policy text from a git ref when one is given, else from `file`.
+fn load_policy_text(
+    root: &Path,
+    file: &Path,
+    policy_ref: Option<&str>,
+) -> Result<(String, PolicySource), (u8, String)> {
+    if let Some(name) = policy_ref {
+        let sha = git::resolve_or_fetch(root, name).map_err(usage)?;
+        let text = git::show_file_at(root, &sha, ops::POLICY_REL)
+            .map_err(|_| usage(format!("no policy at `{name}` ({})", ops::POLICY_REL)))?;
+        return Ok((
+            text,
+            PolicySource::Ref {
+                name: name.to_owned(),
+                sha,
+            },
+        ));
+    }
+    let path = if file.is_absolute() {
+        file.to_path_buf()
     } else {
-        root.join(policy_path)
+        root.join(file)
     };
     let text = std::fs::read_to_string(&path).map_err(|e| {
         usage(format!(
@@ -497,16 +549,29 @@ fn verify_cmd(policy_path: &Path, format: Format, ci_remote: Option<&str>) -> Ou
             path.display()
         ))
     })?;
+    Ok((text, PolicySource::File(path)))
+}
+
+fn verify_cmd(
+    policy_path: &Path,
+    policy_ref: Option<&str>,
+    format: Format,
+    ci_remote: Option<&str>,
+) -> Outcome {
+    let (root, gitdir) = locate()?;
+    let (text, source) = load_policy_text(&root, policy_path, policy_ref)?;
     let pol = policy::parse(&text).map_err(|e| usage(e.to_string()))?;
-    if ci_remote.is_some() {
-        warn_if_policy_is_untrusted(&root, &path);
+    if let (true, PolicySource::File(path)) = (ci_remote.is_some(), &source) {
+        warn_if_policy_is_untrusted(&root, path);
     }
     // CI mode: bring in the evidence published for this exact content first. Every
     // problem on the way becomes a finding and leaves the verdict UNKNOWN (fail closed).
-    let mut notes = Vec::new();
+    let mut notes: Vec<String> = source.note().into_iter().collect();
     if let Some(remote) = ci_remote {
         match git::worktree_tree(&root, &gitdir, &pol.effective_excludes()) {
-            Ok(tree) => notes = evidence::fetch_and_import(&root, &gitdir, remote, &tree).notes,
+            Ok(tree) => {
+                notes.extend(evidence::fetch_and_import(&root, &gitdir, remote, &tree).notes)
+            }
             Err(e) => notes.push(format!(
                 "cannot measure the working tree, so no evidence was fetched: {e}"
             )),
@@ -929,22 +994,19 @@ fn evidence_cmd(cmd: EvidenceCmd) -> Outcome {
 
 /// `opshero ci run`: the CI executes the required commands itself and records them as A2.
 /// Evidence produced here does not depend on anything the author of the change supplied.
-fn ci_run(policy_path: Option<&Path>, allow_local: bool) -> Outcome {
+fn ci_run(policy_path: Option<&Path>, policy_ref: Option<&str>, allow_local: bool) -> Outcome {
     if !allow_local && std::env::var_os("CI").is_none_or(|v| v.is_empty()) {
         return Err(usage(
             "`opshero ci run` records evidence as assurance A2, which only means something when it runs in CI, and the CI environment variable is not set. Pass --allow-local to run it anyway (testing only)",
         ));
     }
     let (root, gitdir) = locate()?;
-    let path = match policy_path {
-        Some(p) if p.is_absolute() => p.to_path_buf(),
-        Some(p) => root.join(p),
-        None => ops::policy_path(&root),
-    };
-    let text = std::fs::read_to_string(&path)
-        .map_err(|e| usage(format!("cannot read policy {}: {e}", path.display())))?;
+    let default_file = ops::policy_path(&root);
+    let (text, source) = load_policy_text(&root, policy_path.unwrap_or(&default_file), policy_ref)?;
     let pol = policy::parse(&text).map_err(|e| usage(e.to_string()))?;
-    warn_if_policy_is_untrusted(&root, &path);
+    if let PolicySource::File(path) = &source {
+        warn_if_policy_is_untrusted(&root, path);
+    }
     // Decide everything before executing anything: a requirement that cannot be
     // executed as written is a configuration error, not a partial run.
     let mut commands: Vec<Vec<String>> = Vec::new();
@@ -974,7 +1036,10 @@ fn ci_run(policy_path: Option<&Path>, allow_local: bool) -> Outcome {
             Err((_, msg)) => eprintln!("opshero ci: {msg}"),
         }
     }
-    let report = ops::evaluate_now(&root, &gitdir, &pol).map_err(internal)?;
+    let mut report = ops::evaluate_now(&root, &gitdir, &pol).map_err(internal)?;
+    report.findings.extend(source.note());
+    report.findings.sort();
+    report.findings.dedup();
     print!("{}", render::text(&report));
     Ok(match report.verdict {
         Verdict::Pass => 0,

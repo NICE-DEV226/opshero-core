@@ -137,6 +137,9 @@ pub fn is_inside_repo(root: &Path, path: &Path) -> bool {
     inside_root(root, path.parent().unwrap_or(path)).is_some()
 }
 
+/// The policy file, relative to the repository root (also the path read from a ref).
+pub const POLICY_REL: &str = ".opshero/policy.toml";
+
 pub fn policy_path(root: &Path) -> PathBuf {
     root.join(".opshero").join("policy.toml")
 }

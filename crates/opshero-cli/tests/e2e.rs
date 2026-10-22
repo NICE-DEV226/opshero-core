@@ -2205,3 +2205,136 @@ fn ci_commands_warn_when_the_policy_comes_from_the_checked_out_content() {
     let v = opshero(d.path(), &["verify", "--ci"]);
     assert!(err(&v).contains("trusted"), "verify --ci too: {}", err(&v));
 }
+
+// ---------------------------------------------------------------------------
+// `--policy-ref`: the policy comes from a git ref (the target branch), not from the content
+// being judged. Closes the gap where a change could edit the policy that judges it.
+// ---------------------------------------------------------------------------
+
+/// A repository whose `main` requires `sh t.sh` and whose branch `pr` weakens the policy to
+/// `true`. Returns the repository checked out on `pr`.
+fn base_and_weakened_pr() -> TempDir {
+    let d = new_repo();
+    fs::write(d.path().join("t.sh"), "exit 0\n").unwrap();
+    fs::write(d.path().join("evil.sh"), "exit 0\n").unwrap();
+    ci_policy(d.path(), "[\"sh\", \"t.sh\"]", "");
+    git(d.path(), &["add", "-A"]);
+    git(d.path(), &["commit", "-q", "-m", "base policy"]);
+    git(d.path(), &["checkout", "-q", "-b", "pr"]);
+    ci_policy(d.path(), "[\"true\"]", ""); // the pull request weakens its own judge
+    git(d.path(), &["add", "-A"]);
+    git(d.path(), &["commit", "-q", "-m", "weaken the policy"]);
+    d
+}
+
+#[test]
+fn a_policy_from_the_target_branch_overrides_the_weakened_one_in_the_change() {
+    let d = base_and_weakened_pr();
+    assert_eq!(code(&opshero(d.path(), &["run", "--", "true"])), 0);
+    // Judged by its own policy the change passes: that is the hole.
+    assert_eq!(code(&opshero(d.path(), &["verify"])), 0);
+    // Judged by the policy of main it does not: `sh t.sh` was never run.
+    let v = opshero(d.path(), &["verify", "--policy-ref", "main"]);
+    assert_eq!(code(&v), 11, "{}{}", out(&v), err(&v));
+    assert!(out(&v).contains("sh t.sh"), "{}", out(&v));
+    assert!(
+        out(&v).contains("policy taken from `main`"),
+        "the source must be stated: {}",
+        out(&v)
+    );
+    assert!(
+        !err(&v).contains("trusted"),
+        "no untrusted-policy warning when the policy comes from a ref: {}",
+        err(&v)
+    );
+}
+
+#[test]
+fn ci_run_with_a_policy_ref_executes_what_the_target_branch_requires() {
+    let d = base_and_weakened_pr();
+    let o = opshero_ci(d.path(), &["ci", "run", "--policy-ref", "main"]);
+    assert_eq!(code(&o), 0, "{}{}", out(&o), err(&o));
+    let recs = read_records(d.path());
+    assert_eq!(recs.len(), 1);
+    assert_eq!(
+        recs[0]["command"]["argv"],
+        serde_json::json!(["sh", "t.sh"]),
+        "must run the BASE policy's command, not the PR's `true`"
+    );
+    assert_eq!(recs[0]["recorder"]["assurance"], "A2");
+}
+
+#[test]
+fn a_missing_ref_or_a_missing_policy_at_the_ref_is_a_usage_error() {
+    let d = base_and_weakened_pr();
+    let no_ref = opshero(d.path(), &["verify", "--policy-ref", "no-such-branch"]);
+    assert_eq!(code(&no_ref), 2, "{}{}", out(&no_ref), err(&no_ref));
+    assert!(err(&no_ref).contains("no-such-branch"), "{}", err(&no_ref));
+    // A commit that has no policy file at all.
+    let first = git_out(d.path(), &["rev-list", "--max-parents=0", "HEAD"]);
+    let no_file = opshero(d.path(), &["verify", "--policy-ref", &first]);
+    assert_eq!(code(&no_file), 2, "{}{}", out(&no_file), err(&no_file));
+    assert!(err(&no_file).contains("no policy"), "{}", err(&no_file));
+}
+
+#[test]
+fn the_target_branch_is_fetched_when_a_shallow_ci_checkout_does_not_have_it() {
+    let (dev, remote) = dev_with_remote(); // main is published, with the policy
+    fs::write(dev.path().join("t.sh"), "exit 0\n").unwrap();
+    ci_policy(dev.path(), "[\"sh\", \"t.sh\"]", "");
+    git(dev.path(), &["add", "-A"]);
+    git(dev.path(), &["commit", "-q", "-m", "base policy"]);
+    git(dev.path(), &["push", "-q", "origin", "main"]);
+    git(dev.path(), &["checkout", "-q", "-b", "pr"]);
+    ci_policy(dev.path(), "[\"true\"]", "");
+    git(dev.path(), &["add", "-A"]);
+    git(dev.path(), &["commit", "-q", "-m", "weaken"]);
+    git(dev.path(), &["push", "-q", "origin", "pr"]);
+
+    // What a CI checkout of a pull request looks like: only the head, no history of `main`.
+    let ci = TempDir::new().unwrap();
+    let url = format!("file://{}", remote.path().display());
+    let ok = Command::new("git")
+        .args([
+            "clone",
+            "-q",
+            "--depth=1",
+            "--single-branch",
+            "--branch",
+            "pr",
+            &url,
+        ])
+        .arg(ci.path())
+        .status()
+        .unwrap()
+        .success();
+    assert!(ok);
+    assert!(
+        git_out(ci.path(), &["branch", "-r", "--list", "origin/main"]).is_empty(),
+        "precondition: no origin/main locally"
+    );
+
+    let o = opshero_ci(ci.path(), &["ci", "run", "--policy-ref", "origin/main"]);
+    assert_eq!(code(&o), 0, "{}{}", out(&o), err(&o));
+    assert!(
+        out(&o).contains("policy taken from `origin/main`"),
+        "{}",
+        out(&o)
+    );
+}
+
+#[test]
+fn policy_and_policy_ref_cannot_be_combined() {
+    let d = base_and_weakened_pr();
+    let o = opshero(
+        d.path(),
+        &[
+            "verify",
+            "--policy",
+            ".opshero/policy.toml",
+            "--policy-ref",
+            "main",
+        ],
+    );
+    assert_eq!(code(&o), 2, "{}{}", out(&o), err(&o));
+}
