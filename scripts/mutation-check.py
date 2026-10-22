@@ -33,6 +33,7 @@ SH = "crates/opshero-core/src/shellcmd.rs"
 SHELL_T = ["cargo", "test", "-p", "opshero-core", "--lib", "shellcmd"]
 SHELL_DIFF = ["cargo", "test", "-p", "opshero-core", "--test", "shell_differential"]
 POL = "crates/opshero-core/src/policy.rs"
+INSTALL_T = ["sh", "scripts/test-install.sh"]
 POLICY_T = ["cargo", "test", "-p", "opshero-core", "--lib", "policy"]
 ST = "crates/opshero-cli/src/store.rs"
 OPS = ["cargo", "test", "-p", "opshero-cli", "--bin", "opshero", "ops::"]
@@ -113,6 +114,11 @@ MUTANTS = [
     ("policy-ref: the source of the policy is not stated", M, "    fn note(&self) -> Option<String> {\n        match self {", "    fn note(&self) -> Option<String> {\n        #[allow(unreachable_code)]\n        return None;\n        match self {", E2E),
     ("policy-ref: a bare name falls back to git's loose lookup (a tag can win)", "crates/opshero-cli/src/git.rs", '    resolve_exact(root, &format!("refs/heads/{refname}"))', "    resolve_exact(root, refname)", E2E),
     ("policy-ref: the remote-tracking ref is read by loose name (a tag or branch can win)", "crates/opshero-cli/src/git.rs", "        return resolve_exact(root, &tracking);", "        return resolve_exact(root, refname);", E2E),
+    ("install: the checksum is not compared", "scripts/install.sh", '[ "$expected" = "$actual" ] || die', 'true || die', INSTALL_T),
+    ("install: a missing SHA256SUMS entry is accepted", "scripts/install.sh", '[ -n "$expected" ] || die "SHA256SUMS has no entry', 'true || die "SHA256SUMS has no entry', INSTALL_T),
+    ("install: an unsupported platform is not refused", "scripts/install.sh", '  *) die "no prebuilt binary for $os/$arch.', '  *) target=x86_64-unknown-linux-musl; true || die "no prebuilt binary for $os/$arch.', INSTALL_T),
+    ("package: files owned by a real user id", "scripts/package_release.py", "info.uid = info.gid = 0", "info.uid = info.gid = 1000", INSTALL_T),
+    ("package: the binary is not executable", "scripts/package_release.py", "(f\"{top}/opshero\", binary, 0o755)", "(f\"{top}/opshero\", binary, 0o644)", INSTALL_T),
     ("git: no cleanup of newly ignored entries", G, "    if !ignored.is_empty() {\n        if ignored.iter().any", "    if false && !ignored.is_empty() {\n        if ignored.iter().any", GIT),
     ("git: one shared index for all exclusion sets", G, 'format!("index-{}", key.get(..32).unwrap_or("default"))', '"index-shared".to_owned()', GIT),
     ("git: check-ignore without --no-index", G, '"check-ignore", "--no-index", "-z"', '"check-ignore", "-z"', GIT),
