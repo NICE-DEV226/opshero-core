@@ -51,6 +51,7 @@ jobs:
       - name: Use it on a real repository
         shell: bash
         run: |
+          set +e   # the default shell runs with -e; this block reads exit codes on purpose
           set -u
           opshero --version | grep -F "$VERSION"
           expect() { want="$1"; shift; "$@" >/dev/null 2>&1; got=$?; [ "$got" -eq "$want" ] || { echo "expected exit $want, got $got: $*"; exit 1; }; echo "ok  exit $got: $*"; }
