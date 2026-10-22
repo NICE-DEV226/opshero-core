@@ -206,3 +206,15 @@ What was added so that the tool can be installed and used without reading the so
 | Installer on other systems | measured | published v0.0.1 installed and used on Alpine 3.20 (musl, busybox), Debian 12 and Ubuntu 20.04/22.04 in Docker; found and fixed: a failed release lookup was reported as "no release yet" |
 
 Tests: 233 passing. Still not done: Homebrew (a tap needs its own repository), `.deb`/`.rpm`, a Windows run with a real agent, detection of unexercised changes.
+
+## Update 2026-10-22 (v0.0.2 published and verified)
+`v0.0.2` is a pre-release with archives for five targets, `SHA256SUMS` and a build-provenance attestation for every archive (all five verified with `gh attestation verify`; a tampered copy is rejected). The workflow `verify-release` then installed it as a user would on four real runners and ran the same scenario on each:
+
+| Runner | Install | `doctor` | UNKNOWN, PASS, stale FAIL, PASS |
+|---|---|---|---|
+| Ubuntu 24.04 (x86_64) | `install.sh` | ok | all four exit codes as expected |
+| Ubuntu 24.04 (aarch64) | `install.sh` | ok | all four |
+| macOS (arm64) | `install.sh` | ok | all four |
+| Windows | `install.ps1` | ok | all four |
+
+This is the first time the aarch64, macOS and Windows binaries were executed. Not executed anywhere: the Intel macOS binary. Also installed and run in Docker from the published release: Alpine 3.20, Ubuntu 22.04. Still true: Windows has not been used with a real agent, so it stays experimental. Tests: 233; mutants: 98 killed, 4 documented equivalent (the full script was run locally before the push, after CI found a stale mutant that a partial local run had missed).

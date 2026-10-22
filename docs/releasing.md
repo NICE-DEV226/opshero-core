@@ -1,6 +1,6 @@
 # Releasing
 
-Status: **v0.0.1 was published on 2026-10-22 as a pre-release; the next release adds a Windows build, the manual page and shell completions (see below)** (https://github.com/NICE-DEV226/opshero-core/releases/tag/v0.0.1). Publishing a release is the maintainer's decision.
+Status: **v0.0.2 was published on 2026-10-22 as a pre-release** (https://github.com/NICE-DEV226/opshero-core/releases/tag/v0.0.2); it adds a Windows build (experimental), the manual page, shell completions and the GitHub Action to v0.0.1. Publishing a release is the maintainer's decision.
 
 ## What a release contains
 For each target, an archive `opshero-<version>-<target>.tar.gz` (`.zip` on Windows) holding the binary, `LICENSE`, `NOTICE`, `README.md`, the manual page (`share/man/man1/opshero.1`) and shell completions (`completions/`, for bash, zsh, fish, PowerShell and elvish), plus one `SHA256SUMS` file and a signed build-provenance attestation for the archives. The manual page and completions are generated from the program's own definitions by `scripts/gen_extras.py` (also available as `opshero man` and `opshero completions <shell>`).
@@ -8,7 +8,7 @@ For each target, an archive `opshero-<version>-<target>.tar.gz` (`.zip` on Windo
 | Target | Build | Notes |
 |---|---|---|
 | `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl` | static (the build fails if the binary is not static) | no dependency on the glibc of the build machine |
-| `aarch64-apple-darwin`, `x86_64-apple-darwin` | native, and cross-compiled for Intel | the Intel binary is not executed on the arm64 runner |
+| `aarch64-apple-darwin`, `x86_64-apple-darwin` | native, and cross-compiled for Intel | the arm64 binary is executed by `verify-release`; the Intel binary is not executed anywhere yet |
 | `x86_64-pc-windows-msvc` | native, `.zip` | **experimental**: the test suite passes on Windows in CI, but it has not been tried with a real agent (docs/status.md) |
 
 Archives are reproducible: sorted entries, zero timestamps, neutral ownership, no gzip name or time. The same inputs give the same bytes, so a checksum can be recomputed from a rebuilt archive. (Two builds of the *binary* on different machines are not claimed to be identical.)
@@ -17,7 +17,7 @@ Archives are reproducible: sorted entries, zero timestamps, neutral ownership, n
 1. Set `version` in `Cargo.toml` (`[workspace.package]`), the `opshero-core` dependency version in `crates/opshero-cli/Cargo.toml` and the `version` default in `action.yml` to the same value (the publish job refuses a mismatch), and commit; update `Cargo.lock` if it changes.
 2. Tag it: `git tag vX.Y.Z && git push origin vX.Y.Z`. The tag **must** equal `v` plus the Cargo version or the publish job refuses.
 3. The `release` workflow builds the five targets, checks that the Linux binaries are static, writes `SHA256SUMS`, signs a provenance attestation with the workflow's identity, and publishes a **pre-release** (the project is pre-alpha).
-4. Before announcing it: download one archive, run `sha256sum -c SHA256SUMS`, run `gh attestation verify <archive> --repo NICE-DEV226/opshero-core`, and try `scripts/install.sh`.
+4. The workflow then runs `verify-release` on the published release: it installs it with `install.sh` / `install.ps1` on Linux x86_64, Linux aarch64, macOS (arm64) and Windows and walks a real repository through UNKNOWN, PASS, FAIL (stale evidence after an edit) and PASS again. Before announcing it, also download one archive, run `sha256sum -c SHA256SUMS` and `gh attestation verify <archive> --repo NICE-DEV226/opshero-core`. `verify-release` can be run by hand for any version (`gh workflow run verify-release.yml -f version=X.Y.Z`).
 
 A manual run (`gh workflow run release.yml`) builds and uploads the archives as workflow artifacts and publishes nothing; it is how the pipeline was tested.
 
