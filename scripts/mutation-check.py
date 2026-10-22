@@ -120,7 +120,7 @@ MUTANTS = [
     ("install: the checksum is not compared", "scripts/install.sh", '[ "$expected" = "$actual" ] || die', 'true || die', INSTALL_T),
     ("install: a missing SHA256SUMS entry is accepted", "scripts/install.sh", '[ -n "$expected" ] || die "SHA256SUMS has no entry', 'true || die "SHA256SUMS has no entry', INSTALL_T),
     ("install: an unsupported platform is not refused", "scripts/install.sh", '  *) die "no prebuilt binary for $os/$arch.', '  *) target=x86_64-unknown-linux-musl; true || die "no prebuilt binary for $os/$arch.', INSTALL_T),
-    ("install: no fallback to the releases list (pre-releases not found)", "scripts/install.sh", '    fetch "$api/releases" "$tmp_v" 2>/dev/null ||', '    false ||', INSTALL_T),
+    ("install: no fallback to the releases list (pre-releases not found)", "scripts/install.sh", '    if ! fetch "$api/releases" "$tmp_v" 2>"$tmp_e"; then', '    if ! false 2>"$tmp_e"; then', INSTALL_T),
     ("install: the OLDEST tag is chosen from the list", "scripts/install.sh", "| head -n 1 | sed 's/.*\"\\([^\"]*\\)\"$/\\1/; s/^v//')\"", "| tail -n 1 | sed 's/.*\"\\([^\"]*\\)\"$/\\1/; s/^v//')\"", INSTALL_T),
     ("cli docs: a help text changes without regenerating docs/cli.md", M, "    /// Delete old evidence, keeping the newest records and everything bound to the current content", "    /// Remove old evidence, keeping the newest records and everything bound to the current content", CLIDOC),
     ("cli docs: the generator forgets nested subcommands", "scripts/gen-cli-docs.py", "    for name in subcommands(text):\n        walk(", "    for name in []:\n        walk(", CLIDOC),

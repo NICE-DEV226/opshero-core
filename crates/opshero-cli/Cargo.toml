@@ -19,7 +19,7 @@ name = "opshero"
 path = "src/main.rs"
 
 [dependencies]
-opshero-core = { path = "../opshero-core", version = "0.0.1" }
+opshero-core = { path = "../opshero-core", version = "0.0.2" }
 serde_json = { version = "1", features = ["preserve_order"] } # keep users' settings.json key order when editing
 shell-words = "1"
 clap = { version = "4", features = ["derive"] }

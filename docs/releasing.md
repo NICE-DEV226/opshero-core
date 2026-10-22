@@ -14,7 +14,7 @@ For each target, an archive `opshero-<version>-<target>.tar.gz` (`.zip` on Windo
 Archives are reproducible: sorted entries, zero timestamps, neutral ownership, no gzip name or time. The same inputs give the same bytes, so a checksum can be recomputed from a rebuilt archive. (Two builds of the *binary* on different machines are not claimed to be identical.)
 
 ## Cutting a release
-1. Set `version` in `Cargo.toml` (`[workspace.package]`) and commit; update `Cargo.lock` if it changes.
+1. Set `version` in `Cargo.toml` (`[workspace.package]`), the `opshero-core` dependency version in `crates/opshero-cli/Cargo.toml` and the `version` default in `action.yml` to the same value (the publish job refuses a mismatch), and commit; update `Cargo.lock` if it changes.
 2. Tag it: `git tag vX.Y.Z && git push origin vX.Y.Z`. The tag **must** equal `v` plus the Cargo version or the publish job refuses.
 3. The `release` workflow builds the five targets, checks that the Linux binaries are static, writes `SHA256SUMS`, signs a provenance attestation with the workflow's identity, and publishes a **pre-release** (the project is pre-alpha).
 4. Before announcing it: download one archive, run `sha256sum -c SHA256SUMS`, run `gh attestation verify <archive> --repo NICE-DEV226/opshero-core`, and try `scripts/install.sh`.

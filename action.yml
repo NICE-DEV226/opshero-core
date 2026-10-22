@@ -12,7 +12,7 @@ inputs:
     default: auto
   version:
     description: "opshero release to install, without the leading v."
-    default: "0.0.1"
+    default: "0.0.2"
   opshero-path:
     description: "Use this opshero binary instead of downloading a release (for testing a build)."
     default: ""

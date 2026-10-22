@@ -86,6 +86,8 @@ jobs:
           [ "${GITHUB_REF_NAME}" = "v${VERSION}" ] || { echo "tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${VERSION}"; exit 1; }
           # The action installs the release it was cut with: its default must be this version.
           grep -q "default: \"${VERSION}\"" action.yml || { echo "action.yml does not default to version ${VERSION}"; exit 1; }
+          # The CLI depends on the core by path and by version (crates.io needs both): they must agree.
+          grep -q "opshero-core = { path = \"../opshero-core\", version = \"${VERSION}\" }" crates/opshero-cli/Cargo.toml || { echo "opshero-cli does not depend on opshero-core ${VERSION}"; exit 1; }
       - name: Checksums
         run: |
           cd dist
