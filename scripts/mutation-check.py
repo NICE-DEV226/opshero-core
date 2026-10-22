@@ -117,6 +117,8 @@ MUTANTS = [
     ("install: the checksum is not compared", "scripts/install.sh", '[ "$expected" = "$actual" ] || die', 'true || die', INSTALL_T),
     ("install: a missing SHA256SUMS entry is accepted", "scripts/install.sh", '[ -n "$expected" ] || die "SHA256SUMS has no entry', 'true || die "SHA256SUMS has no entry', INSTALL_T),
     ("install: an unsupported platform is not refused", "scripts/install.sh", '  *) die "no prebuilt binary for $os/$arch.', '  *) target=x86_64-unknown-linux-musl; true || die "no prebuilt binary for $os/$arch.', INSTALL_T),
+    ("install: no fallback to the releases list (pre-releases not found)", "scripts/install.sh", '    fetch "$api/releases" "$tmp_v" 2>/dev/null ||', '    false ||', INSTALL_T),
+    ("install: the OLDEST tag is chosen from the list", "scripts/install.sh", "| head -n 1 | sed 's/.*\"\\([^\"]*\\)\"$/\\1/; s/^v//')\"", "| tail -n 1 | sed 's/.*\"\\([^\"]*\\)\"$/\\1/; s/^v//')\"", INSTALL_T),
     ("package: files owned by a real user id", "scripts/package_release.py", "info.uid = info.gid = 0", "info.uid = info.gid = 1000", INSTALL_T),
     ("package: the binary is not executable", "scripts/package_release.py", "(f\"{top}/opshero\", binary, 0o755)", "(f\"{top}/opshero\", binary, 0o644)", INSTALL_T),
     ("git: no cleanup of newly ignored entries", G, "    if !ignored.is_empty() {\n        if ignored.iter().any", "    if false && !ignored.is_empty() {\n        if ignored.iter().any", GIT),

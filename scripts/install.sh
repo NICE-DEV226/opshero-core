@@ -11,7 +11,8 @@
 # and the build attestations (`gh attestation verify`) are on the release page.
 #
 # Test and unusual-setup overrides: OPSHERO_BASE_URL (where the archive and SHA256SUMS live),
-# OPSHERO_OS and OPSHERO_ARCH (what `uname -s` and `uname -m` would say).
+# OPSHERO_API_URL (where `releases/latest` and `releases` are read), OPSHERO_OS and OPSHERO_ARCH
+# (what `uname -s` and `uname -m` would say).
 set -eu
 
 REPO="NICE-DEV226/opshero-core"
@@ -40,19 +41,19 @@ sha256_of() {
 }
 
 version="${OPSHERO_VERSION:-}"
-if [ -z "${OPSHERO_BASE_URL:-}" ]; then
-  if [ -z "$version" ]; then
-    tmp_v="$(mktemp)"
-    fetch "https://api.github.com/repos/$REPO/releases/latest" "$tmp_v" || die "cannot find the latest release (is there one yet?)"
-    version="$(sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' "$tmp_v" | head -n 1)"
-    rm -f "$tmp_v"
-    [ -n "$version" ] || die "cannot read the latest version"
+if [ -z "$version" ]; then
+  api="${OPSHERO_API_URL:-https://api.github.com/repos/$REPO}"
+  tmp_v="$(mktemp)"
+  # `releases/latest` ignores pre-releases (404 while only pre-releases exist); the list does not.
+  if ! fetch "$api/releases/latest" "$tmp_v" 2>/dev/null; then
+    fetch "$api/releases" "$tmp_v" 2>/dev/null || { rm -f "$tmp_v"; die "cannot find the latest release (is there one yet?)"; }
   fi
-  base="https://github.com/$REPO/releases/download/v$version"
-else
-  base="$OPSHERO_BASE_URL"
-  [ -n "$version" ] || die "set OPSHERO_VERSION when OPSHERO_BASE_URL is used"
+  # grep -o isolates every occurrence, so the FIRST (newest) tag wins even on single-line JSON.
+  version="$(grep -o '"tag_name": *"[^"]*"' "$tmp_v" | head -n 1 | sed 's/.*"\([^"]*\)"$/\1/; s/^v//')"
+  rm -f "$tmp_v"
+  [ -n "$version" ] || die "cannot find the latest release (is there one yet?)"
 fi
+base="${OPSHERO_BASE_URL:-https://github.com/$REPO/releases/download/v$version}"
 
 name="opshero-$version-$target"
 work="$(mktemp -d)"

@@ -21,7 +21,7 @@ Evidence records, canonical JSON, policy v0, verdict function, git tree binding,
 | Coverage-guided fuzzing (`cargo-fuzz`, nightly toolchain, corpus in repo, run in CI) | planned, needs a toolchain decision |
 | Differential test of the canonical JSON against the ECMAScript serializer (found a misparse in the reference itself) | done |
 | Default of `post_run_changes` (KI-2): flipped to `deny` on 2026-10-21, before any dogfooding data; friction measured by the journal | done |
-| CI workflow (`.github/workflows/ci.yml`): fmt, clippy, tests with `OPSHERO_REQUIRE_NODE=1`, TLC models via `scripts/check-formal.sh`, 83-mutant check via `scripts/mutation-check.py`; actions pinned by commit | **verified on a real runner: all three jobs green on 2026-10-22** (test 61 s, formal 8 s, mutation 175 s). It had first failed to start on 2026-10-21 for an account billing reason while the repository was private; once public, it ran. `scripts/ci-local.sh` still runs the same steps locally |
+| CI workflow (`.github/workflows/ci.yml`): fmt, clippy, tests with `OPSHERO_REQUIRE_NODE=1`, TLC models via `scripts/check-formal.sh`, 85-mutant check via `scripts/mutation-check.py`; actions pinned by commit | **verified on a real runner: all three jobs green on 2026-10-22** (test 61 s, formal 8 s, mutation 175 s). It had first failed to start on 2026-10-21 for an account billing reason while the repository was private; once public, it ran. `scripts/ci-local.sh` still runs the same steps locally |
 
 Exit criterion: KI-1 closed (done), mutation fuzzing clean (done), one formal model checked (done; its two intended counter-examples document the limits of local evidence), CI workflow (verified green on a real runner, 2026-10-22), coverage-guided fuzzers run 10 minutes in CI without findings (open).
 
@@ -75,7 +75,7 @@ The verdict stays a pure function of frozen inputs; the connection is used to co
 
 Every item must degrade to "evidence missing, verdict UNKNOWN" when the network is unavailable or restricted, never to a silent pass.
 
-Release pipeline (2026-10-22): static Linux and macOS binaries, reproducible archives, verified installer, signed provenance; built and tested by a manual run, **not published** (docs/releasing.md).
+Release pipeline (2026-10-22): static Linux and macOS binaries, reproducible archives, verified installer, signed provenance; **v0.0.1 published as a pre-release on 2026-10-22** and verified (docs/releasing.md).
 
 ## M5: Depth
 

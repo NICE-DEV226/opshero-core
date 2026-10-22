@@ -5,7 +5,7 @@
 **Status: pre-alpha, not yet released.** The full test suite passes in CI on Linux and macOS, and on Windows with Git for Windows (Windows is not a supported platform yet: it has not been exercised with a real agent). Implemented and tested: evidence records bound to a git tree, a deterministic policy verdict (PASS / FAIL / UNKNOWN), a Claude Code adapter (hooks, optional Stop gate), flaky-command handling (`repeat`), publishing evidence to a git ref and fetching it in CI (`opshero verify --ci`), and CI-executed evidence at assurance A2 (`opshero ci run`). **Not built:** signed attestations (assurance A3), Codex and Cursor adapters, a packaged CI action, release binaries and an installer. Exact state, measurements and known limits: [docs/status.md](docs/status.md). **Demand for this tool is unproven.**
 
 ### Install
-Prebuilt static binaries (Linux, macOS) and an installer exist, but **no release is published yet**: see [docs/releasing.md](docs/releasing.md). Until then, build from source.
+A pre-release (`v0.0.1`) with static Linux and macOS binaries is published: [releases](https://github.com/NICE-DEV226/opshero-core/releases). Checksums and signed provenance are attached; how to verify them and how to use the installer: [docs/releasing.md](docs/releasing.md). Or build from source.
 
 ### Try it
 ```

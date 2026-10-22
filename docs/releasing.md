@@ -1,6 +1,6 @@
 # Releasing
 
-Status: the pipeline is built and was exercised by a manual run on 2026-10-22; **no release has been published yet**. Publishing is the maintainer's decision.
+Status: **v0.0.1 was published on 2026-10-22 as a pre-release** (https://github.com/NICE-DEV226/opshero-core/releases/tag/v0.0.1). Publishing a release is the maintainer's decision.
 
 ## What a release contains
 For each of four targets, an archive `opshero-<version>-<target>.tar.gz` holding the binary, `LICENSE`, `NOTICE` and `README.md`, plus one `SHA256SUMS` file and a signed build-provenance attestation for the archives.
@@ -33,3 +33,8 @@ What the checksum does and does not give: it detects a corrupted or altered down
 
 ## Not done
 Windows binaries; `crates.io` publication (crate names not checked, `publish = false`); a Homebrew formula; reproducible builds of the binary itself; signing with a long-lived key (the attestation uses the workflow identity instead).
+
+## The first release, as verified (2026-10-22)
+Tag `v0.0.1` on commit `f2826ac` (CI green). The `release` workflow built four archives (633 to 752 KB) and published them with `SHA256SUMS`. Checked afterwards, as a user would: the four checksums match; `gh attestation verify` succeeds for the archive and names this repository, the workflow `release.yml@refs/tags/v0.0.1`, the commit `f2826ac` and a GitHub-hosted runner; the same command **rejects** an archive with one byte appended; the installer installed `0.0.1` from the real release.
+
+One defect was found in the installer by doing that, and fixed: without an explicit version it asked `releases/latest`, which GitHub answers with a 404 while only pre-releases exist, so a user following the README would have failed. It now falls back to the releases list (and picks the newest tag even when the JSON is on one line; the first fix of that parsing chose the oldest, caught by a test).

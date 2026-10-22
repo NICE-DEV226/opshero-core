@@ -72,6 +72,23 @@ cp "$T/keep.sums" "$REL/SHA256SUMS"
 DESC="unsupported platform"; refuse OPSHERO_OS=FreeBSD OPSHERO_ARCH=riscv64
 grep -q "no prebuilt binary" "$T/out" || fail "$DESC: wrong message"; ok "refuses an unsupported platform with a pointer to a source build"
 
+# 4b. no version given: it is found through the releases API (a fake local one)
+API="$T/api"; run_noversion() { env OPSHERO_BASE_URL="file://$REL" OPSHERO_API_URL="file://$1" PREFIX="$P" sh scripts/install.sh; }
+json() { printf '[{"tag_name": "v%s", "prerelease": true}, {"tag_name": "v0.0.0"}]\n' "$VERSION"; }
+# (a) a stable release exists: /releases/latest answers
+mkdir -p "$API/a/releases"; printf '{"tag_name": "v%s"}\n' "$VERSION" > "$API/a/releases/latest"
+P="$T/p3"; run_noversion "$API/a" > "$T/out" 2>&1 || { cat "$T/out"; fail "latest via /releases/latest"; }
+[ -x "$P/bin/opshero" ] || fail "nothing installed via /releases/latest"; ok "finds the latest stable release"
+# (b) only pre-releases exist: /releases/latest is a 404, so the list is used (the situation of v0.0.1)
+mkdir -p "$API/b"; json > "$API/b/releases"
+P="$T/p4"; run_noversion "$API/b" > "$T/out" 2>&1 || { cat "$T/out"; fail "pre-release only: the list fallback is missing"; }
+[ -x "$P/bin/opshero" ] || fail "nothing installed from a pre-release-only repository"; ok "falls back to the releases list when only pre-releases exist"
+# (c) no release at all
+mkdir -p "$API/c"; P="$T/p5"
+if run_noversion "$API/c" > "$T/out" 2>&1; then fail "no release: should have been refused"; fi
+grep -q "cannot find the latest release" "$T/out" || fail "no release: wrong message"; ok "says so clearly when there is no release"
+
+P="$T/p2" # back to the prefix that holds the "previous" install used by the refusal tests
 DESC="missing archive"; rm "$REL/$NAME.tar.gz"; refuse; grep -q "cannot download" "$T/out" || fail "$DESC: wrong message"
 cp "$T/keep.tgz" "$REL/$NAME.tar.gz"; ok "refuses when the archive cannot be downloaded"
 
