@@ -72,54 +72,100 @@ fn bash_available() -> bool {
         .unwrap_or(false)
 }
 
-/// What bash executed: each unknown command is appended to a log file (not stdout, which the
-/// input itself may redirect) as `CALL\0prog\0args...END\0`.
-fn run_in_bash(input: &str) -> Option<(Vec<Vec<String>>, i32)> {
-    // One private pair of directories per call: an empty working directory (so globs expand
-    // to nothing) and a log kept outside it. Tests run in parallel and must not share state.
-    static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let base = std::env::temp_dir().join(format!("opshero-shelldiff-{}-{id}", std::process::id()));
-    let dir = base.join("work");
-    std::fs::create_dir_all(&dir).ok()?;
-    let log = base.join("calls.log");
-    let script = format!(
-        "command_not_found_handle() {{ {{ printf 'CALL\\0%s\\0' \"$1\"; shift; for x in \"$@\"; do printf '%s\\0' \"$x\"; done; printf 'END\\0'; }} >> '{}'; return 0; }}\n{input}\n",
-        log.display()
-    );
-    let (timeout, bash) = (locate("timeout")?, locate("bash")?);
-    let status = Command::new(timeout)
-        .arg("3")
-        .arg(bash)
-        .args(["--noprofile", "--norc", "-c", &script])
-        .current_dir(&dir)
-        .env_clear()
-        .env("PATH", "/nonexistent")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .ok()?;
-    let exit = status.code()?;
-    if exit == 124 {
-        return None; // timed out: the harness, not the input, failed
+/// One private sandbox per test thread, reused for every call: an empty working directory (so globs
+/// expand to nothing) and a log kept outside it. It is emptied before each call and removed when
+/// the thread ends, so a run, however it ends, leaves nothing behind (an earlier version created
+/// three files per call and exhausted the inodes of /tmp).
+struct Sandbox {
+    base: std::path::PathBuf,
+}
+
+impl Sandbox {
+    fn new() -> Self {
+        let id: String = format!("{:?}", std::thread::current().id())
+            .chars()
+            .filter(char::is_ascii_digit)
+            .collect();
+        let base =
+            std::env::temp_dir().join(format!("opshero-shelldiff-{}-{id}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::create_dir_all(base.join("work"));
+        Sandbox { base }
     }
-    let text = std::fs::read(&log)
-        .map(|b| String::from_utf8_lossy(&b).into_owned())
-        .unwrap_or_default();
-    let mut calls = Vec::new();
-    for call in text.split("END\0").filter(|c| !c.is_empty()) {
-        let mut parts: Vec<String> = call.split('\0').map(str::to_owned).collect();
-        if parts.first().map(String::as_str) != Some("CALL") {
+
+    /// Empty the working directory and the log. Returns false if the sandbox is unusable.
+    fn reset(&self) -> bool {
+        let work = self.base.join("work");
+        if let Ok(entries) = std::fs::read_dir(&work) {
+            for e in entries.flatten() {
+                let p = e.path();
+                let _ = std::fs::remove_file(&p).or_else(|_| std::fs::remove_dir_all(&p));
+            }
+        } else if std::fs::create_dir_all(&work).is_err() {
+            return false;
+        }
+        let _ = std::fs::remove_file(self.base.join("calls.log"));
+        true
+    }
+}
+
+impl Drop for Sandbox {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.base);
+    }
+}
+
+thread_local! {
+    static SANDBOX: Sandbox = Sandbox::new();
+}
+
+/// What bash executed: each unknown command is appended to a log file (not stdout, which the
+/// input itself may redirect) as `CALL\0prog\0args...END\0`. Also returns bash's exit status.
+fn run_in_bash(input: &str) -> Option<(Vec<Vec<String>>, i32)> {
+    SANDBOX.with(|sb| {
+        if !sb.reset() {
             return None;
         }
-        parts.remove(0);
-        while parts.last().is_some_and(String::is_empty) {
-            parts.pop();
+        let work = sb.base.join("work");
+        let log = sb.base.join("calls.log");
+        let script = format!(
+            "command_not_found_handle() {{ {{ printf 'CALL\\0%s\\0' \"$1\"; shift; for x in \"$@\"; do printf '%s\\0' \"$x\"; done; printf 'END\\0'; }} >> '{}'; return 0; }}\n{input}\n",
+            log.display()
+        );
+        let (timeout, bash) = (locate("timeout")?, locate("bash")?);
+        let status = Command::new(timeout)
+            .arg("3")
+            .arg(bash)
+            .args(["--noprofile", "--norc", "-c", &script])
+            .current_dir(&work)
+            .env_clear()
+            .env("PATH", "/nonexistent")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .ok()?;
+        let exit = status.code()?;
+        if exit == 124 {
+            return None; // timed out: the harness, not the input, failed
         }
-        calls.push(parts);
-    }
-    Some((calls, exit))
+        let text = std::fs::read(&log)
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .unwrap_or_default();
+        let mut calls = Vec::new();
+        for call in text.split("END\0").filter(|c| !c.is_empty()) {
+            let mut parts: Vec<String> = call.split('\0').map(str::to_owned).collect();
+            if parts.first().map(String::as_str) != Some("CALL") {
+                return None;
+            }
+            parts.remove(0);
+            while parts.last().is_some_and(String::is_empty) {
+                parts.pop();
+            }
+            calls.push(parts);
+        }
+        Some((calls, exit))
+    })
 }
 
 fn check(input: &str) -> Result<(), String> {
@@ -215,6 +261,20 @@ const TRAPS: &[&str] = &[
     "a\x0c#b",
     "a \x0c; b",
     "CI=1\x0bTZ=UTC\x0ca",
+    // A redirection ends an assignment value: nothing runs, exit status 0.
+    "TZ=UTC>> c",
+    "TZ=UTC/> f",
+    "LANG=C/>> b\n",
+    "CI=1< x a",
+    // Line continuation: bash deletes `\<newline>`, so the `#` that follows is a comment start and
+    // the next line is a SECOND command. The apostrophe in the comment and the escaped one on the
+    // last line cancel out for a POSIX splitter, which therefore sees balanced quotes.
+    "a \\\n#'\nc \\'",
+    "a \\\n#'\nc",
+    "a \\\n#\nc",
+    "a \\\n# x\nevil",
+    "pytest \\\n#'\nrm \\'",
+    "a b\\\n #'\nc \\'",
     "TZ=UTC\ta",
     "CI=1 \x0c a",
     "a '#' b",
@@ -255,10 +315,72 @@ fn random_inputs_are_never_misread_as_one_simple_command() {
         .unwrap_or(4000);
     // Mostly words and quoting characters, so that many inputs are classified `Simple`.
     let atoms: &[&str] = &[
-        "a", "b", "c", "f", "a", "b", " ", " ", " ", "'", "'", "\"", "\"", "\\", "$", "$'", "$\"",
-        "`a`", "$(a)", ";", "&", "&&", "|", "||", ">", "<", ">>", "2>&1", "#", "~", "*", "?", "\n",
-        "=", "v=1", "x", "$x", "\\\n", ",", "-", "/", "a=b",
+        "a",
+        "b",
+        "c",
+        "f",
+        "a",
+        "b",
+        " ",
+        " ",
+        " ",
+        "'",
+        "'",
+        "\"",
+        "\"",
+        "\\",
+        "$",
+        "$'",
+        "$\"",
+        "`a`",
+        "$(a)",
+        ";",
+        "&",
+        "&&",
+        "|",
+        "||",
+        ">",
+        "<",
+        ">>",
+        "2>&1",
+        "#",
+        "~",
+        "*",
+        "?",
+        "\n",
+        "=",
+        "v=1",
+        "x",
+        "$x",
+        "\\\n",
+        ",",
+        "-",
+        "/",
+        "a=b",
+        // Allowlisted assignments (a name that is not allowlisted is refused before anything else).
+        "CI=1",
+        "TZ=UTC",
+        "LANG=C",
+        // Characters that bash does NOT treat as word separators, but a Unicode-aware splitter does.
+        "\x0c",
+        "\r",
+        "\x0b",
+        "\u{a0}",
+        "\u{2003}",
+        "\u{3000}",
+        // Composites, so that rare combinations (a continuation, then a comment, then a command)
+        // are reachable by chance.
+        "\\\n#",
+        " #",
+        "#'",
+        "\\'",
+        "\\\n \\\n",
+        "\n#",
     ];
+    // The campaign is only worth running if the alphabet really contains what it claims to.
+    for needed in ["CI=1", "\x0c", "\u{a0}", "\\\n#"] {
+        assert!(atoms.contains(&needed), "alphabet is missing {needed:?}");
+    }
     let seed: u64 = std::env::var("OPSHERO_SHELL_SEED")
         .ok()
         .and_then(|v| v.parse().ok())

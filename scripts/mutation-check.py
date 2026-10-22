@@ -99,12 +99,15 @@ MUTANTS = [
     ("hardening: no warning for a policy from the checked-out content", M, "    if ops::is_inside_repo(root, policy_file) {", "    if false && ops::is_inside_repo(root, policy_file) {", E2E),
     ("hardening: oversized published blob not skipped by size", EV, "        if size > MAX_RECORD_BYTES {", "        if false && size > MAX_RECORD_BYTES {", E2E),
     ("shell: ANSI-C quoting $'...' accepted", SH, "b'$' if matches!(b.get(i + 1), Some(b'\\'' | b'\"')) => {", "b'$' if false && matches!(b.get(i + 1), Some(b'\\'' | b'\"')) => {", SHELL_DIFF),
-    ("shell: comments not detected", SH, "b'#' if i == 0 || matches!(b[i - 1], b' ' | b'\\t') =>", "b'#' if false && (i == 0 || matches!(b[i - 1], b' ' | b'\\t')) =>", SHELL_T),
+    ("shell: comments not detected", SH, "b'#' if i == 0 || matches!(b[i - 1], b' ' | b'\\t' | b'\\n') =>", "b'#' if false && (i == 0 || matches!(b[i - 1], b' ' | b'\\t' | b'\\n')) =>", SHELL_T),
     ("shell: variables not checked against the allowlist", SH, "if env_names.iter().any(|n| !harmless_variable(n)) {", "if false {", SHELL_T),
     ("shell: any word accepted as program name", SH, "if words[0].is_empty() || !words[0].chars().all(is_program_char) {", "if false {", SHELL_T),
     ("shell: assignments recognised after unquoting", SH, "let (env_names, rest) = split_assignments(rest);", 'let (env_names, rest): (Vec<String>, &str) = (vec![], rest);', SHELL_T),
     ("shell: other whitespace allowed as a separator", SH, "|| (c.is_whitespace() && !matches!(c, ' ' | '\\t' | '\\n'))", "|| false", SHELL_T),
     ("shell: control characters allowed", SH, "(c.is_control() && c != '\\t' && c != '\\n')", "false", SHELL_T),
+    ("shell: backslash-newline continuation accepted outside quotes", SH, "b'\\\\' if b.get(i + 1) == Some(&b'\\n') => {", "b'\\\\' if false && b.get(i + 1) == Some(&b'\\n') => {", SHELL_T),
+    ("shell: continuation accepted inside double quotes", SH, "                if b.get(i + 1) == Some(&b'\\n') {\n                    return Some((i, \"line continuation\"));", "                if false && b.get(i + 1) == Some(&b'\\n') {\n                    return Some((i, \"line continuation\"));", SHELL_T),
+    ("shell: a redirection does not end an assignment value", SH, "b' ' | b'\\t' | b'<' | b'>' => break,", "b' ' | b'\\t' => break,", SHELL_DIFF),
     ("git: no cleanup of newly ignored entries", G, "    if !ignored.is_empty() {\n        if ignored.iter().any", "    if false && !ignored.is_empty() {\n        if ignored.iter().any", GIT),
     ("git: one shared index for all exclusion sets", G, 'format!("index-{}", key.get(..32).unwrap_or("default"))', '"index-shared".to_owned()', GIT),
     ("git: check-ignore without --no-index", G, '"check-ignore", "--no-index", "-z"', '"check-ignore", "-z"', GIT),
@@ -114,6 +117,7 @@ MUTANTS = [
 
 # Mutants with no observable effect, kept so nobody "fixes" them by accident.
 EQUIVALENT = {
+    "shell: newline as a predecessor of a comment": "an unquoted newline is refused before any later `#` is examined, so the extra case is unreachable; kept as defense in depth",
     "store: non-atomic write of the chain head": "readers take the chain lock, so nobody observes a partial head; kept atomic as defense in depth",
     "stats: round down instead of up": "no input among 60,000 random ones changes the answer; rounding up is kept for the formal guarantee (RFC-0005 section 3.2)",
 }

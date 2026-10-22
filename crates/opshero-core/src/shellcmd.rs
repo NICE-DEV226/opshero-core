@@ -29,6 +29,9 @@ fn first_unquoted_operator(s: &str) -> Option<(usize, &'static str)> {
             single = c != b'\'';
         } else if double {
             if c == b'\\' {
+                if b.get(i + 1) == Some(&b'\n') {
+                    return Some((i, "line continuation"));
+                }
                 i += 1;
             } else if c == b'"' {
                 double = false;
@@ -37,6 +40,12 @@ fn first_unquoted_operator(s: &str) -> Option<(usize, &'static str)> {
             }
         } else {
             match c {
+                // Bash deletes `\<newline>` before it tokenizes, so what follows (for instance a
+                // `#` that now starts a comment) is read in a different context than a splitter
+                // reads it. Refuse rather than model it.
+                b'\\' if b.get(i + 1) == Some(&b'\n') => {
+                    return Some((i, "line continuation"));
+                }
                 b'\\' => i += 1,
                 b'\'' => single = true,
                 b'"' => double = true,
@@ -50,7 +59,9 @@ fn first_unquoted_operator(s: &str) -> Option<(usize, &'static str)> {
                 }
                 // A word starting with `#` begins a comment that ends at the NEWLINE, whatever
                 // a backslash before it says: what follows on the next line is a new command.
-                b'#' if i == 0 || matches!(b[i - 1], b' ' | b'\t') => return Some((i, "comment")),
+                b'#' if i == 0 || matches!(b[i - 1], b' ' | b'\t' | b'\n') => {
+                    return Some((i, "comment"));
+                }
                 b'\n' => return Some((i, "newline")),
                 b';' => return Some((i, ";")),
                 b'(' | b')' => return Some((i, "subshell")),
@@ -164,7 +175,9 @@ fn split_assignments(mut s: &str) -> (Vec<String>, &str) {
                     b'\\' => i += 1,
                     b'\'' => single = true,
                     b'"' => double = true,
-                    b' ' | b'\t' => break,
+                    // A redirection operator ends the word in bash: `TZ=UTC>> c` is the assignment
+                    // `TZ=UTC` and a redirection to a file named `c`; no command runs, exit status 0.
+                    b' ' | b'\t' | b'<' | b'>' => break,
                     _ => {}
                 }
             }
@@ -459,6 +472,56 @@ mod tests {
             "CI=1\tpytest",
             "pytest -k 'a b'",
             "echo 'two\nlines'",
+        ] {
+            assert!(
+                matches!(analyze(ok), Analysis::Simple { .. }),
+                "{ok:?} is an ordinary command"
+            );
+        }
+    }
+
+    #[test]
+    fn a_line_continuation_is_refused_because_it_changes_what_a_hash_means() {
+        for bad in [
+            "a \\\n#'\nc \\'",
+            "pytest \\\n#'\nrm \\'",
+            "a \\\n# x\nevil",
+            "a\\\nb",
+            "a \"x\\\ny\"",
+        ] {
+            assert!(
+                matches!(analyze(bad), Analysis::Compound(_)),
+                "{bad:?} must be refused"
+            );
+        }
+        // A backslash that does not precede a newline is an ordinary escape.
+        for ok in ["pytest tests\\ dir", r"echo a\;b", "echo 'a\\'"] {
+            assert!(
+                matches!(analyze(ok), Analysis::Simple { .. }),
+                "{ok:?} is an ordinary command"
+            );
+        }
+    }
+
+    #[test]
+    fn a_redirection_ends_an_assignment_value_and_so_nothing_is_run() {
+        for bad in [
+            "TZ=UTC>> c",
+            "TZ=UTC/> f",
+            "LANG=C>> b",
+            "CI=1< x a",
+            "CI=1<x",
+            "TZ=UTC>f c",
+        ] {
+            assert!(
+                matches!(analyze(bad), Analysis::Compound(_)),
+                "{bad:?} must be refused"
+            );
+        }
+        for ok in [
+            "CI=1 pytest > out.txt",
+            "CI=1 pytest 2>&1",
+            "TZ=UTC pytest -q",
         ] {
             assert!(
                 matches!(analyze(ok), Analysis::Simple { .. }),
