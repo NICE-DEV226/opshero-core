@@ -286,7 +286,7 @@ const TRAPS: &[&str] = &[
 fn known_traps_never_turn_into_a_simple_command_that_bash_runs_differently() {
     if !bash_available() {
         assert!(
-            std::env::var("OPSHERO_REQUIRE_BASH").is_err(),
+            !std::env::var("OPSHERO_REQUIRE_BASH").is_ok_and(|v| !v.is_empty()),
             "bash is required"
         );
         eprintln!("SKIPPED: bash not found; the differential test did not run");
@@ -305,7 +305,7 @@ fn known_traps_never_turn_into_a_simple_command_that_bash_runs_differently() {
 fn random_inputs_are_never_misread_as_one_simple_command() {
     if !bash_available() {
         assert!(
-            std::env::var("OPSHERO_REQUIRE_BASH").is_err(),
+            !std::env::var("OPSHERO_REQUIRE_BASH").is_ok_and(|v| !v.is_empty()),
             "bash is required"
         );
         eprintln!("SKIPPED: bash not found");

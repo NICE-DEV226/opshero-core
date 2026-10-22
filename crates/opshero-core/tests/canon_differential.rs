@@ -125,7 +125,7 @@ fn json() -> impl Strategy<Value = Value> {
 fn canonical_json_matches_the_ecmascript_reference() {
     if !node_available() {
         assert!(
-            std::env::var("OPSHERO_REQUIRE_NODE").is_err(),
+            !std::env::var("OPSHERO_REQUIRE_NODE").is_ok_and(|v| !v.is_empty()),
             "node is required (OPSHERO_REQUIRE_NODE is set)"
         );
         eprintln!("SKIPPED: `node` not found; the differential test did not run");
@@ -180,7 +180,7 @@ fn canonical_json_matches_the_ecmascript_reference() {
 #[test]
 fn known_traps_match_the_reference() {
     if !node_available() {
-        assert!(std::env::var("OPSHERO_REQUIRE_NODE").is_err());
+        assert!(!std::env::var("OPSHERO_REQUIRE_NODE").is_ok_and(|v| !v.is_empty()));
         eprintln!("SKIPPED: `node` not found");
         return;
     }
