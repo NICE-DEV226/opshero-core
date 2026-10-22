@@ -61,7 +61,7 @@ Whether `UNKNOWN` blocks is a **policy** decision; in `--ci` mode the default is
 2. `opshero init` creates `.opshero/policy.toml`.
 3. `opshero hook install --agent <a>` shows the exact configuration change and asks for confirmation.
 
-Nothing else changes: no daemon, no account, no network.
+Nothing else changes: no daemon, no account. The network is used only by the steps that move evidence (`evidence push|fetch`, `verify --ci`), never to compute a verdict.
 
 ### 3.2 Daily work with an agent (silent)
 

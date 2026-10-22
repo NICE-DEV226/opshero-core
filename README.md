@@ -1,6 +1,6 @@
 # opshero
 
-> Deterministic, offline-verifiable evidence that the checks you rely on **actually ran on the exact content you are about to merge**.
+> Deterministic, replayable evidence that the checks you rely on **actually ran on the exact content you are about to merge**.
 
 **Status: pre-alpha, Linux only, not yet released.** Implemented and tested: evidence records bound to a git tree, a deterministic policy verdict (PASS / FAIL / UNKNOWN), a Claude Code adapter (hooks, optional Stop gate), flaky-command handling (`repeat`), publishing evidence to a git ref and fetching it in CI (`opshero verify --ci`), and CI-executed evidence at assurance A2 (`opshero ci run`). **Not built:** signed attestations (assurance A3), Codex and Cursor adapters, a packaged CI action, release binaries, macOS and Windows support. Exact state, measurements and known limits: [docs/status.md](docs/status.md). **Demand for this tool is unproven.**
 
@@ -20,7 +20,7 @@ Coding agents now write a large share of changes, and the bottleneck moved from 
 1. **Stale evidence** — "tests pass" was true for an earlier version of the change, not for the one in the pull request.
 2. **Unexercised change** — the checks that ran never touched the files that were modified.
 
-This tool records what ran, binds that record to the **git tree** it ran against, evaluates it against a small written policy, and gives a verdict that a CI gate (or a human) can verify offline. A signed attestation of that verdict is planned, not built offline.
+This tool records what ran, binds that record to the **git tree** it ran against, evaluates it against a small written policy, and gives a verdict that a CI gate (or a human) can recompute later from the same inputs, with no service involved. A signed attestation of that verdict is planned, not built offline.
 
 ## What it certifies — and what it does not
 
@@ -37,7 +37,7 @@ If a statement in the documentation sounds like it certifies more than the left 
 - **No machine-learning model anywhere in the product.** A verifier must be more trustworthy than what it verifies, so it must be deterministic and auditable. Explanations are generated from rule identifiers and structured facts. ([ADR-0001](docs/adr/0001-no-llm-in-product.md))
 - **Evidence is bound to content, not names.** The subject is a git tree object id. ([ADR-0002](docs/adr/0002-bind-evidence-to-git-tree.md))
 - **Fail closed, say "unknown".** Missing evidence is never reported as a pass.
-- **Local-first and offline.** No account, no daemon, no telemetry; verification needs no network. ([ADR-0007](docs/adr/0007-no-account-no-telemetry-offline-verify.md))
+- **The verdict never depends on the network.** It is a pure function of the policy, the content and the recorded evidence, so anyone can recompute it later and get the same answer, and a gate does not fail because a service is down. The network is used at the edges, to *collect* inputs (publish and fetch evidence, `verify --ci`), never inside the verdict. No account, no daemon, no telemetry. ([ADR-0007](docs/adr/0007-no-account-no-telemetry-offline-verify.md))
 - **Standards over inventions.** in-toto/DSSE attestations, SARIF, JUnit, lcov/Cobertura. ([ADR-0004](docs/adr/0004-standards-over-inventions.md))
 - **Honest assurance levels.** A locally recorded log can be rewritten by whoever controls the machine; only independent execution resists a dishonest operator. ([RFC-0001](docs/rfc/0001-principles-threat-model-assurance.md))
 

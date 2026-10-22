@@ -98,7 +98,7 @@ An in-toto Statement v1 inside a DSSE envelope.
 
 - CI: keyless signing with the CI platform's OIDC identity (Sigstore-compatible).
 - Local: an Ed25519 key; the public key is distributed out of band. Locally signed attestations are A1 at best.
-- Verification is offline given the trust roots.
+- Verification needs no service once it holds the trust roots: an auditor can replay it years later. (Obtaining a keyless signature, and checking a transparency log, do use the network at signing time; neither is part of recomputing the verdict.)
 
 ## 6. Storage and transport
 

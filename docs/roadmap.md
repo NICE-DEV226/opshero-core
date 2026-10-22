@@ -61,6 +61,18 @@ Kill criterion: below 3 % after 100 sessions, stop feature work and reassess the
 
 Exit criterion: one public repository where the CI gate blocks a real stale-evidence pull request.
 
+## Connected edge (design stance of 2026-10-22, see ADR-0007)
+The verdict stays a pure function of frozen inputs; the connection is used to collect better inputs. Candidates, in the order I would build them:
+
+1. **Trusted policy from the target branch, fetched automatically** (`--policy-ref origin/main`), instead of relying on the operator to remember `--policy`. Closes the documented policy-trust gap (docs/ci-gate.md). Small.
+2. **Result reuse by tree id**: if the same tree already passed on the CI or on another machine, an agent can fetch that evidence before running the tests again (a remote cache keyed by the content, as build systems do). Needs CI-produced (A2) evidence to be trustworthy. Large productivity value, and the first reason a connected tool beats a local one.
+3. **Cross-check an A2 claim with the forge**: confirm through the forge API that the workflow run for this exact commit really happened and what it concluded.
+4. **Signed evidence with a transparency log and independent timestamps** (assurance A3), which is where the network adds real security: it prevents back-dating and silent edits.
+5. **Shared flake statistics** across runs and repositories to set the `repeat` thresholds from observed rates instead of fixed ones. This is hosted, shared state, which is also where the research found the money (docs/research W5).
+6. Dependency-registry check (RFC-0004 section 6), network-gated.
+
+Every item must degrade to "evidence missing, verdict UNKNOWN" when the network is unavailable or restricted, never to a silent pass.
+
 ## M5: Depth
 
 - Read-set tracing on Linux (ADR-0008) and scoped freshness: a check stays valid if no file it read changed (Merkle subtree comparison).

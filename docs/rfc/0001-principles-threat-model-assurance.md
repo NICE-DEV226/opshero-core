@@ -13,7 +13,7 @@ A pull request that contains agent-written code usually comes with an *implicit 
 
 - G1. Record what verification commands actually ran, and bind each record to the content it ran against.
 - G2. Evaluate those records against a written policy and produce a deterministic verdict with machine-readable reasons.
-- G3. Emit a signed attestation that can be verified offline by a third party.
+- G3. Emit a signed attestation that a third party can verify later, with no service of ours involved.
 - G4. Integrate into the existing workflow (agent hooks, shell, git, CI, pull-request status checks) without a mandatory service, account or daemon.
 - G5. Be language-agnostic: operate on processes, files and git objects, not on language semantics.
 
