@@ -1,6 +1,6 @@
 # CI for opshero. Third-party actions are pinned to a commit, not a tag.
-# This file has NOT been run on a real runner yet (written 2026-10-21); every command it
-# calls is a script or cargo command that was run locally: see docs/roadmap.md.
+# First green run on a real runner: 2026-10-22 (ubuntu-24.04: test 61 s, formal 8 s, mutation
+# 175 s). Every command it calls is also available locally as scripts/ci-local.sh.
 name: ci
 
 on:
