@@ -65,6 +65,10 @@ expires = "2027-01-31"
 
 Implemented since the first draft (RFC-0005): an optional per-requirement `repeat = { alpha = "5%", flake_rate = "5%" }` for commands that may be flaky, and `post_run_changes = "deny" | "allow"` (default `deny`: a run during which the working tree changed is not evidence; `allow` is the explicit opt-out).
 
+## 4b. File format
+
+Policies are TOML. Since the `toml` crate was updated to 1.x (2026-10-22) the parser implements **TOML 1.1**: everything TOML 1.0 accepts, plus newlines and trailing commas in inline tables and the `\e` escape. Writing TOML 1.0 keeps a policy readable by older versions of the tool and by current editors; a 1.1-only construct fails closed (a usage error, exit 2) on a version that does not know it, never silently. Duplicate keys and unknown keys are errors, a byte order mark and CRLF line endings are accepted. The test `the_policy_dialect_is_toml_1_1_and_strict_about_duplicates_and_unknown_keys` pins this; changing it is a change of this section.
+
 ## 5. Semantics
 
 - A policy evaluation is a pure function `verdict = eval(policy, subject, evidence_set)`.

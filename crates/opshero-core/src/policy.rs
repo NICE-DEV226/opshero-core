@@ -621,4 +621,52 @@ mod tests {
             assert!(parse(&text).is_ok(), "{ok:?} is a legitimate exclusion");
         }
     }
+
+    /// The policy file dialect is a decision, not an accident of the parser version. Since the
+    /// update to the `toml` crate 1.x the parser implements TOML 1.1: it accepts what TOML 1.0
+    /// accepted, plus a few conveniences. It stays strict where it matters for a gate: duplicate
+    /// keys and unknown keys are errors. If this test changes, RFC-0004 section "File format"
+    /// must change with it.
+    #[test]
+    fn the_policy_dialect_is_toml_1_1_and_strict_about_duplicates_and_unknown_keys() {
+        let head = "version = 1\nid = \"p\"\n";
+        let req = "[[require]]\nid = \"t\"\ncheck = \"evidence.fresh\"\ncommand = [\"a\"]\n";
+        // TOML 1.0, unchanged by the update.
+        assert!(parse(&format!("{head}{req}")).is_ok());
+        assert!(
+            parse(&format!("{head}{req}").replace('\n', "\r\n")).is_ok(),
+            "CRLF"
+        );
+        assert!(
+            parse(&format!("\u{feff}{head}{req}")).is_ok(),
+            "a byte order mark"
+        );
+        // TOML 1.1 conveniences, newly accepted.
+        let multiline_inline =
+            format!("{head}{req}repeat = {{\n  alpha = \"5%\",\n  flake_rate = \"5%\",\n}}\n");
+        assert!(
+            parse(&multiline_inline).is_ok(),
+            "newlines and a trailing comma in an inline table"
+        );
+        assert!(
+            parse(&format!(
+                "{head}[[require]]\nid = \"t\\e\"\ncheck = \"evidence.fresh\"\ncommand = [\"a\"]\n"
+            ))
+            .is_ok(),
+            "the \\e escape"
+        );
+        // Strictness that must never loosen.
+        assert!(
+            parse(&format!("{head}{req}id = \"again\"\n")).is_err(),
+            "duplicate key"
+        );
+        assert!(
+            parse(&format!("{head}{req}bogus = 1\n")).is_err(),
+            "unknown key"
+        );
+        assert!(
+            parse(&format!("{head}{head}{req}")).is_err(),
+            "duplicate top-level keys"
+        );
+    }
 }
