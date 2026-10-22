@@ -40,10 +40,10 @@ if (-not $version) {
         # `releases/latest` ignores pre-releases; the list does not.
         try { Fetch "$api/releases/latest" $tmp } catch { Fetch "$api/releases" $tmp }
         $m = [regex]::Match((Get-Content -Raw $tmp), '"tag_name"\s*:\s*"v?([^"]+)"')
-        if (-not $m.Success) { Die 'cannot find the latest release (is there one yet?)' }
+        if (-not $m.Success) { Die 'no release has been published yet' }
         $version = $m.Groups[1].Value
     } catch {
-        Die 'cannot find the latest release (is there one yet?)'
+        Die "cannot look up the latest release ($($_.Exception.Message)). Check your connection, or set OPSHERO_VERSION to skip the lookup"
     } finally {
         Remove-Item -Force $tmp -ErrorAction SilentlyContinue
     }

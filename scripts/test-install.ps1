@@ -24,8 +24,13 @@ Ok 'packaged the Windows archive'
 
 function Install($prefix) {
     $env:OPSHERO_BASE_URL = $rel; $env:OPSHERO_VERSION = $version; $env:PREFIX = $prefix
+    # A refusal writes to stderr; with ErrorActionPreference=Stop PowerShell would turn that text into
+    # a fatal error of this test instead of letting us read the message and the exit code.
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     $out = & powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install.ps1 2>&1 | Out-String
-    return @{ Code = $LASTEXITCODE; Out = $out }
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    return @{ Code = $code; Out = $out }
 }
 
 $r = Install "$t\p1"

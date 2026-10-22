@@ -202,6 +202,7 @@ What was added so that the tool can be installed and used without reading the so
 | Windows: `x86_64-pc-windows-msvc` build, `.zip` archive, `scripts/install.ps1` | **written; the installer test runs on a Windows runner in CI** (experimental) | zip reproducibility and contents are tested on Linux; the PowerShell installer is exercised only by the Windows CI job |
 | GitHub Action (`action.yml`): installs a release, enforces the target branch's policy, job summary, `verdict` output | done | its shell logic was run locally with simulated GitHub variables (PASS, FAIL with summary, invalid mode); CI job `action` runs it on Linux and macOS with the build under test and with the published release |
 | crates.io readiness | partial | names free on 2026-10-22; `opshero-core` packaged and built from its package; `opshero-cli` verifiable only after the first publication; `publish = false` until the maintainer decides |
-| Oldest git version | being measured | CI job on Ubuntu 22.04 (git 2.34), informational; `doctor` warns below 2.34 |
+| Oldest git version | measured | the whole test suite passes on git 2.34 (Ubuntu 22.04 in CI); a smoke run of the published v0.0.1 binary (install, run, verify before and after an edit) works on git 2.25.1 (Ubuntu 20.04, Docker). `doctor` warns below 2.34, the oldest version the full suite is run against |
+| Installer on other systems | measured | published v0.0.1 installed and used on Alpine 3.20 (musl, busybox), Debian 12 and Ubuntu 20.04/22.04 in Docker; found and fixed: a failed release lookup was reported as "no release yet" |
 
 Tests: 233 passing. Still not done: Homebrew (a tap needs its own repository), `.deb`/`.rpm`, a Windows run with a real agent, detection of unexercised changes.

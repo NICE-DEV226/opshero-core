@@ -30,8 +30,8 @@ case "$os/$arch" in
 esac
 
 fetch() { # url dest
-  if command -v curl >/dev/null 2>&1; then curl -fsSL -o "$2" "$1"
-  elif command -v wget >/dev/null 2>&1; then wget -q -O "$2" "$1"
+  if command -v curl >/dev/null 2>&1; then curl -fsSL --retry 3 -o "$2" "$1"
+  elif command -v wget >/dev/null 2>&1; then wget -q --tries=3 -O "$2" "$1"
   else die "curl or wget is required"; fi
 }
 sha256_of() {
@@ -43,15 +43,19 @@ sha256_of() {
 version="${OPSHERO_VERSION:-}"
 if [ -z "$version" ]; then
   api="${OPSHERO_API_URL:-https://api.github.com/repos/$REPO}"
-  tmp_v="$(mktemp)"
+  tmp_v="$(mktemp)"; tmp_e="$(mktemp)"
   # `releases/latest` ignores pre-releases (404 while only pre-releases exist); the list does not.
   if ! fetch "$api/releases/latest" "$tmp_v" 2>/dev/null; then
-    fetch "$api/releases" "$tmp_v" 2>/dev/null || { rm -f "$tmp_v"; die "cannot find the latest release (is there one yet?)"; }
+    if ! fetch "$api/releases" "$tmp_v" 2>"$tmp_e"; then
+      detail="$(tr '\n' ' ' < "$tmp_e")"; rm -f "$tmp_v" "$tmp_e"
+      die "cannot look up the latest release${detail:+ ($detail)}. Check your connection, or set OPSHERO_VERSION to skip the lookup"
+    fi
   fi
+  rm -f "$tmp_e"
   # grep -o isolates every occurrence, so the FIRST (newest) tag wins even on single-line JSON.
   version="$(grep -o '"tag_name": *"[^"]*"' "$tmp_v" | head -n 1 | sed 's/.*"\([^"]*\)"$/\1/; s/^v//')"
   rm -f "$tmp_v"
-  [ -n "$version" ] || die "cannot find the latest release (is there one yet?)"
+  [ -n "$version" ] || die "no release has been published yet"
 fi
 base="${OPSHERO_BASE_URL:-https://github.com/$REPO/releases/download/v$version}"
 

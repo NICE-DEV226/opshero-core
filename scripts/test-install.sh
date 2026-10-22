@@ -103,10 +103,15 @@ P="$T/p3"; run_noversion "$API/a" > "$T/out" 2>&1 || { cat "$T/out"; fail "lates
 mkdir -p "$API/b"; json > "$API/b/releases"
 P="$T/p4"; run_noversion "$API/b" > "$T/out" 2>&1 || { cat "$T/out"; fail "pre-release only: the list fallback is missing"; }
 [ -x "$P/bin/opshero" ] || fail "nothing installed from a pre-release-only repository"; ok "falls back to the releases list when only pre-releases exist"
-# (c) no release at all
+# (c) the lookup itself fails (no network, rate limit): say so, and say how to skip it
 mkdir -p "$API/c"; P="$T/p5"
-if run_noversion "$API/c" > "$T/out" 2>&1; then fail "no release: should have been refused"; fi
-grep -q "cannot find the latest release" "$T/out" || fail "no release: wrong message"; ok "says so clearly when there is no release"
+if run_noversion "$API/c" > "$T/out" 2>&1; then fail "failed lookup: should have been refused"; fi
+grep -q "cannot look up the latest release" "$T/out" && grep -q "OPSHERO_VERSION" "$T/out" || fail "failed lookup: wrong message"
+ok "reports a failed lookup as such, not as a missing release"
+# (d) the repository answers but has no release at all
+mkdir -p "$API/d"; echo '[]' > "$API/d/releases"
+if run_noversion "$API/d" > "$T/out" 2>&1; then fail "no release: should have been refused"; fi
+grep -q "no release has been published yet" "$T/out" || fail "no release: wrong message"; ok "says so clearly when there is no release"
 
 P="$T/p2" # back to the prefix that holds the "previous" install used by the refusal tests
 DESC="missing archive"; rm "$REL/$NAME.tar.gz"; refuse; grep -q "cannot download" "$T/out" || fail "$DESC: wrong message"

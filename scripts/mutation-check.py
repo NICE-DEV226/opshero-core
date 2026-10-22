@@ -140,6 +140,8 @@ MUTANTS = [
     ("installer: the manual page is not installed", "scripts/install.sh", '  cp "$work/$name/share/man/man1/opshero.1" "$PREFIX/share/man/man1/opshero.1"\n', "", INSTALL_T),
     ("package: the Windows binary is not named .exe", "scripts/package_release.py", 'exe = "opshero.exe" if windows else "opshero"', 'exe = "opshero"', INSTALL_T),
     ("package: zip timestamps are not neutral", "scripts/package_release.py", "date_time=(1980, 1, 1, 0, 0, 0)", "date_time=(2024, 1, 1, 0, 0, 0)", INSTALL_T),
+    ("installer: a failed lookup is reported as a missing release", "scripts/install.sh", 'die "cannot look up the latest release${detail:+ ($detail)}. Check your connection, or set OPSHERO_VERSION to skip the lookup"', 'die "no release has been published yet"', INSTALL_T),
+    ("installer: an empty release list is accepted", "scripts/install.sh", '[ -n "$version" ] || die "no release has been published yet"', 'true', INSTALL_T),
 ]
 
 # Mutants with no observable effect, kept so nobody "fixes" them by accident.
